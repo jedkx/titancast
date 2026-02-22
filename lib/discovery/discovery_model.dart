@@ -1,3 +1,5 @@
+import '../remote/brand_detector.dart';
+
 enum DiscoveryMode { network, manualIp, qrScan }
 
 enum DiscoveryMethod { ssdp, mdns, networkProbe, manualIp, qr }
@@ -18,6 +20,11 @@ class DiscoveredDevice {
   final String? customName;
   final DateTime addedAt;
 
+  /// Populated by [DeviceRepository.save] after [BrandDetector.detect] runs.
+  /// Null for devices that haven't been through detection yet.
+  /// Persisted to JSON so detection doesn't re-run on every launch.
+  final TvBrand? detectedBrand;
+
   DiscoveredDevice({
     required this.ip,
     required this.friendlyName,
@@ -31,12 +38,11 @@ class DiscoveredDevice {
     this.ssid,
     this.customName,
     DateTime? addedAt,
+    this.detectedBrand,
   }) : addedAt = addedAt ?? DateTime.now();
 
   String get displayName => customName ?? friendlyName;
 
-  // Derives device type from serviceType and friendlyName for filtering and
-  // icon resolution. Centralised here so UI and filter logic stay in sync.
   DeviceType get deviceType {
     final type = (serviceType ?? '').toLowerCase();
     final name = friendlyName.toLowerCase();
@@ -76,6 +82,8 @@ class DiscoveredDevice {
     String? customName,
     bool clearCustomName = false,
     DateTime? addedAt,
+    TvBrand? detectedBrand,
+    bool clearDetectedBrand = false,
   }) {
     return DiscoveredDevice(
       ip: ip ?? this.ip,
@@ -90,6 +98,9 @@ class DiscoveredDevice {
       ssid: ssid ?? this.ssid,
       customName: clearCustomName ? null : (customName ?? this.customName),
       addedAt: addedAt ?? this.addedAt,
+      detectedBrand: clearDetectedBrand
+          ? null
+          : (detectedBrand ?? this.detectedBrand),
     );
   }
 
@@ -105,10 +116,11 @@ class DiscoveredDevice {
     'ssid': ssid,
     'customName': customName,
     'addedAt': addedAt.toIso8601String(),
-    // rawHeaders intentionally excluded — large and re-fetched on connect
+    'detectedBrand': detectedBrand?.name,
   };
 
   factory DiscoveredDevice.fromJson(Map<String, dynamic> json) {
+    final brandName = json['detectedBrand'] as String?;
     return DiscoveredDevice(
       ip: json['ip'] as String,
       friendlyName: json['friendlyName'] as String,
@@ -126,6 +138,12 @@ class DiscoveredDevice {
       addedAt: json['addedAt'] != null
           ? DateTime.tryParse(json['addedAt'] as String) ?? DateTime.now()
           : DateTime.now(),
+      detectedBrand: brandName != null
+          ? TvBrand.values.firstWhere(
+            (e) => e.name == brandName,
+        orElse: () => TvBrand.unknown,
+      )
+          : null,
     );
   }
 
@@ -141,5 +159,5 @@ class DiscoveredDevice {
 
   @override
   String toString() =>
-      'DiscoveredDevice(ip: $ip, name: $displayName, ssid: $ssid, method: ${method.name})';
+      'DiscoveredDevice(ip: $ip, name: $displayName, brand: ${detectedBrand?.name}, method: ${method.name})';
 }

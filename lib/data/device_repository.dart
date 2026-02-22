@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../discovery/discovery_model.dart';
+import '../remote/brand_detector.dart';
 
 /// Persists the device list to SharedPreferences.
 /// Data survives app restarts until the user clears app storage.
@@ -39,21 +40,39 @@ class DeviceRepository {
     }
   }
 
-  /// Saves a device. If the IP already exists:
-  /// - Discovery fields (name, manufacturer, etc.) are updated.
-  /// - [customName] and [addedAt] are preserved.
+  /// Saves a device and runs brand detection if not already detected.
+  ///
+  /// If the IP already exists:
+  ///   - Discovery fields (name, manufacturer, etc.) are updated.
+  ///   - [customName] and [addedAt] are preserved.
+  ///   - [detectedBrand] is preserved if already set; re-detected if null.
   Future<void> save(DiscoveredDevice incoming) async {
     final index = _cache.indexWhere((d) => d.ip == incoming.ip);
+
+    // Run brand detection if this device doesn't have a brand yet.
+    // We run it on the incoming device so fresh manufacturer data is used.
+    final TvBrand? brand = (incoming.detectedBrand == null ||
+        incoming.detectedBrand == TvBrand.unknown)
+        ? await BrandDetector.detect(incoming)
+        : incoming.detectedBrand;
+
+    final withBrand = incoming.copyWith(detectedBrand: brand);
+
     if (index == -1) {
-      _cache.insert(0, incoming);
+      _cache.insert(0, withBrand);
     } else {
       final existing = _cache[index];
-      _cache[index] = incoming.copyWith(
+      _cache[index] = withBrand.copyWith(
         customName: existing.customName,
         addedAt: existing.addedAt,
         ssid: incoming.ssid ?? existing.ssid,
+        // Keep existing brand if we couldn't improve it
+        detectedBrand: (brand != null && brand != TvBrand.unknown)
+            ? brand
+            : existing.detectedBrand,
       );
     }
+
     await _persist();
   }
 

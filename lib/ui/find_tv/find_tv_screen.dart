@@ -4,9 +4,8 @@ import 'network_scan_screen.dart';
 import 'ip_input_screen.dart';
 import 'qr_scan_screen.dart';
 
-/// Entry screen showing 3 discovery method cards.
-/// Each card shows only a title + short subtitle initially.
-/// Tapping expands it to reveal numbered steps + action button.
+enum _MethodType { network, manualIp, qr }
+
 class FindTvScreen extends StatefulWidget {
   final void Function(Stream<DiscoveredDevice>) onDiscoveryStarted;
   final void Function(DiscoveredDevice) onDeviceFound;
@@ -24,325 +23,229 @@ class FindTvScreen extends StatefulWidget {
 }
 
 class _FindTvScreenState extends State<FindTvScreen> {
-  // Which card is currently expanded. null = all collapsed.
   _MethodType? _expanded;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    const Color bgColor = Color(0xFF0A0A0E);
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: CustomScrollView(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        backgroundColor: bgColor,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Add Device',
+          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverAppBar.large(
-            backgroundColor: colorScheme.surface,
-            foregroundColor: colorScheme.onSurface,
-            surfaceTintColor: colorScheme.surfaceTint,
-            shadowColor: Colors.transparent,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsetsDirectional.only(
-                start: 16,
-                bottom: 16,
-              ),
-              centerTitle: false,
-              title: Text(
-                'Find TV',
-                style: textTheme.headlineMedium?.copyWith(
-                  color: colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              collapseMode: CollapseMode.pin,
-            ),
+        children: [
+          const Text(
+            'Select Connection Method',
+            style: TextStyle(color: Color(0xFF8A8A93), fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5),
           ),
+          const SizedBox(height: 16),
 
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20, top: 4),
-                  child: Text(
-                    'Choose how to connect',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
+          _MethodCard(
+            type: _MethodType.network,
+            title: 'Auto Scan',
+            subtitle: 'Find TVs on your current Wi-Fi network',
+            icon: Icons.wifi_find_rounded,
+            isExpanded: _expanded == _MethodType.network,
+            onTap: () => setState(() => _expanded = _expanded == _MethodType.network ? null : _MethodType.network),
+            actionLabel: 'Start Scanning',
+            actionIcon: Icons.search_rounded,
+            onAction: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => NetworkScanScreen(onDiscoveryStarted: widget.onDiscoveryStarted)),
+              );
+            },
+            steps: const {
+              '1': 'Ensure your phone and TV are on the same Wi-Fi.',
+              '2': 'Tap scan and wait for your TV to appear.',
+            },
+          ),
+          const SizedBox(height: 16),
 
-                _MethodCard(
-                  type: _MethodType.network,
-                  icon: Icons.radar_rounded,
-                  title: 'Network Scan',
-                  subtitle: 'Automatically find all TVs on your Wi-Fi.',
-                  steps: const [
-                    'Make sure your phone and TV are on the same Wi-Fi.',
-                    'Tap "Start Scan" — discovery runs for up to 15 seconds.',
-                    'Your TV appears in the list as it is found.',
-                  ],
-                  containerColor: colorScheme.primaryContainer,
-                  iconColor: colorScheme.onPrimaryContainer,
-                  isExpanded: _expanded == _MethodType.network,
-                  onToggle: () => _toggle(_MethodType.network),
-                  onAction: () => _openNetworkScan(context),
-                  actionLabel: 'Start Scan',
-                  actionIcon: Icons.radar_rounded,
-                ),
+          _MethodCard(
+            type: _MethodType.manualIp,
+            title: 'IP Address',
+            subtitle: 'Enter your TV\'s IP address directly',
+            icon: Icons.settings_ethernet_rounded,
+            isExpanded: _expanded == _MethodType.manualIp,
+            onTap: () => setState(() => _expanded = _expanded == _MethodType.manualIp ? null : _MethodType.manualIp),
+            actionLabel: 'Enter IP',
+            actionIcon: Icons.keyboard_rounded,
+            onAction: () async {
+              final device = await Navigator.push<DiscoveredDevice>(
+                context,
+                MaterialPageRoute(builder: (_) => const IpInputScreen()),
+              );
+              if (device != null && mounted) {
+                widget.onDeviceFound(device);
+                Navigator.pop(context);
+              }
+            },
+            steps: const {
+              '1': 'Go to your TV\'s Network Settings.',
+              '2': 'Find the IPv4 Address (e.g., 192.168.1.50).',
+              '3': 'Enter it on the next screen.',
+            },
+          ),
+          const SizedBox(height: 16),
 
-                const SizedBox(height: 12),
-
-                _MethodCard(
-                  type: _MethodType.ip,
-                  icon: Icons.lan_rounded,
-                  title: 'Enter IP Address',
-                  subtitle: 'Connect directly with your TV\'s IP address.',
-                  steps: const [
-                    'On your TV go to Settings > Network > IP Address.',
-                    'Type the address shown (e.g. 192.168.1.100).',
-                    'Tap "Connect" — TitanCast will identify your TV.',
-                  ],
-                  containerColor: colorScheme.secondaryContainer,
-                  iconColor: colorScheme.onSecondaryContainer,
-                  isExpanded: _expanded == _MethodType.ip,
-                  onToggle: () => _toggle(_MethodType.ip),
-                  onAction: () => _openIpInput(context),
-                  actionLabel: 'Enter IP',
-                  actionIcon: Icons.link_rounded,
-                ),
-
-                const SizedBox(height: 12),
-
-                _MethodCard(
-                  type: _MethodType.qr,
-                  icon: Icons.qr_code_scanner_rounded,
-                  title: 'Scan QR Code',
-                  subtitle: 'Fastest setup — scan the code on your TV screen.',
-                  steps: const [
-                    'Open TitanCast on your TV and select "Connect Phone".',
-                    'A QR code will appear on your TV screen.',
-                    'Tap "Open Camera" and point it at the QR code.',
-                  ],
-                  containerColor: colorScheme.tertiaryContainer,
-                  iconColor: colorScheme.onTertiaryContainer,
-                  isExpanded: _expanded == _MethodType.qr,
-                  onToggle: () => _toggle(_MethodType.qr),
-                  onAction: () => _openQrScan(context),
-                  actionLabel: 'Open Camera',
-                  actionIcon: Icons.camera_alt_rounded,
-                ),
-              ]),
-            ),
+          _MethodCard(
+            type: _MethodType.qr,
+            title: 'Scan QR Code',
+            subtitle: 'Use your camera to scan a TV code',
+            icon: Icons.qr_code_scanner_rounded,
+            isExpanded: _expanded == _MethodType.qr,
+            onTap: () => setState(() => _expanded = _expanded == _MethodType.qr ? null : _MethodType.qr),
+            actionLabel: 'Open Camera',
+            actionIcon: Icons.camera_alt_rounded,
+            onAction: () async {
+              final device = await Navigator.push<DiscoveredDevice>(
+                context,
+                MaterialPageRoute(builder: (_) => const QrScanScreen()),
+              );
+              if (device != null && mounted) {
+                widget.onDeviceFound(device);
+                Navigator.pop(context);
+              }
+            },
+            steps: const {
+              '1': 'Open the TitanCast app on your TV.',
+              '2': 'Select "Connect Phone".',
+              '3': 'Scan the QR code displayed on the screen.',
+            },
           ),
         ],
       ),
     );
   }
-
-  void _toggle(_MethodType type) {
-    setState(() => _expanded = _expanded == type ? null : type);
-  }
-
-  Future<void> _openNetworkScan(BuildContext context) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => NetworkScanScreen(
-          onDiscoveryStarted: widget.onDiscoveryStarted,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openIpInput(BuildContext context) async {
-    final device = await Navigator.push<DiscoveredDevice>(
-      context,
-      MaterialPageRoute(builder: (_) => const IpInputScreen()),
-    );
-    if (device != null) {
-      widget.onDeviceFound(device);
-      if (context.mounted) Navigator.pop(context);
-    }
-  }
-
-  Future<void> _openQrScan(BuildContext context) async {
-    final device = await Navigator.push<DiscoveredDevice>(
-      context,
-      MaterialPageRoute(builder: (_) => const QrScanScreen()),
-    );
-    if (device != null) {
-      widget.onDeviceFound(device);
-      if (context.mounted) Navigator.pop(context);
-    }
-  }
 }
-
-enum _MethodType { network, ip, qr }
-
-// =============================================================================
-// Expandable method card
-// =============================================================================
 
 class _MethodCard extends StatelessWidget {
   final _MethodType type;
-  final IconData icon;
   final String title;
   final String subtitle;
-  final List<String> steps;
-  final Color containerColor;
-  final Color iconColor;
+  final IconData icon;
   final bool isExpanded;
-  final VoidCallback onToggle;
-  final VoidCallback onAction;
+  final VoidCallback onTap;
   final String actionLabel;
   final IconData actionIcon;
+  final VoidCallback onAction;
+  final Map<String, String> steps;
 
   const _MethodCard({
     required this.type,
-    required this.icon,
     required this.title,
     required this.subtitle,
-    required this.steps,
-    required this.containerColor,
-    required this.iconColor,
+    required this.icon,
     required this.isExpanded,
-    required this.onToggle,
-    required this.onAction,
+    required this.onTap,
     required this.actionLabel,
     required this.actionIcon,
+    required this.onAction,
+    required this.steps,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    const Color panelColor = Color(0xFF15151A);
+    const Color accentColor = Color(0xFF8B5CF6);
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: panelColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isExpanded ? accentColor.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.05),
+          width: 1.5,
+        ),
+        boxShadow: isExpanded
+            ? [BoxShadow(color: accentColor.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 8))]
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
       child: InkWell(
-        onTap: onToggle,
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeInOut,
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Always visible: icon + title + subtitle + chevron
-                Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: containerColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(icon, color: iconColor, size: 24),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            style: textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    AnimatedRotation(
-                      turns: isExpanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 280),
-                      curve: Curves.easeInOut,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Expanded: divider + numbered steps + action button
-                if (isExpanded) ...[
-                  const SizedBox(height: 20),
-                  Divider(color: colorScheme.outlineVariant, height: 1),
-                  const SizedBox(height: 20),
-
-                  // Numbered steps
-                  ...steps.asMap().entries.map((entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 48, height: 48,
+                    decoration: BoxDecoration(color: const Color(0xFF22222A), borderRadius: BorderRadius.circular(14)),
+                    child: Icon(icon, color: isExpanded ? accentColor : Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 22,
-                          height: 22,
-                          decoration: BoxDecoration(
-                            color: containerColor,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${entry.key + 1}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: iconColor,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            entry.value,
-                            style: textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
+                        Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 4),
+                        Text(subtitle, style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 12)),
                       ],
                     ),
-                  )),
-
-                  const SizedBox(height: 8),
-
-                  // Action button -- full width, tap triggers the real action
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: onAction,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: containerColor,
-                        foregroundColor: iconColor,
-                      ),
-                      icon: Icon(actionIcon, size: 18),
-                      label: Text(actionLabel),
-                    ),
+                  ),
+                  Icon(
+                    isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    color: const Color(0xFF8A8A93),
                   ),
                 ],
+              ),
+              if (isExpanded) ...[
+                const SizedBox(height: 24),
+                const Divider(color: Color(0xFF22222A), height: 1),
+                const SizedBox(height: 16),
+                ...steps.entries.map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 20, height: 20,
+                        decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.15), shape: BoxShape.circle),
+                        child: Center(child: Text(e.key, style: const TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.w800))),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(e.value, style: const TextStyle(color: Color(0xFFD4D4D8), fontSize: 13, height: 1.4))),
+                    ],
+                  ),
+                )),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: accentColor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: onAction,
+                    icon: Icon(actionIcon, size: 18, color: Colors.white),
+                    label: Text(actionLabel, style: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.5, color: Colors.white)),
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),

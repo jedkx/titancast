@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:titancast/data/active_device.dart';
 import 'devices/devices_screen.dart';
 import 'remote/remote_screen.dart';
 
@@ -16,6 +17,25 @@ class _AppShellState extends State<AppShell> {
     DevicesScreen(),
     RemoteScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Automatically switch to the Remote tab when a device is connected.
+    activeDeviceNotifier.addListener(_onDeviceConnected);
+  }
+
+  @override
+  void dispose() {
+    activeDeviceNotifier.removeListener(_onDeviceConnected);
+    super.dispose();
+  }
+
+  void _onDeviceConnected() {
+    if (activeDeviceNotifier.value != null && _navIndex != 1) {
+      setState(() => _navIndex = 1);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

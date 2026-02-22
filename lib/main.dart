@@ -19,11 +19,9 @@ class TitanCastApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color seedColor = Color(0xFF3000FF);
-    final ColorScheme darkColorScheme = ColorScheme.fromSeed(
-      seedColor: seedColor,
-      brightness: Brightness.dark,
-    );
+    const Color primaryPurple = Color(0xFF8B5CF6);
+    const Color deepBackground = Color(0xFF0A0A0E);
+    const Color panelColor = Color(0xFF15151A);
 
     return MaterialApp(
       title: 'TitanCast',
@@ -31,7 +29,13 @@ class TitanCastApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData(
         useMaterial3: true,
-        colorScheme: darkColorScheme,
+        scaffoldBackgroundColor: deepBackground,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: primaryPurple,
+          brightness: Brightness.dark,
+          surface: deepBackground,
+          primary: primaryPurple,
+        ),
         textTheme: Typography.material2021().white.copyWith(
           headlineMedium: const TextStyle(fontSize: 28, fontWeight: FontWeight.w400),
           titleLarge: const TextStyle(fontSize: 22, fontWeight: FontWeight.w400),
@@ -39,14 +43,19 @@ class TitanCastApp extends StatelessWidget {
           bodyMedium: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, letterSpacing: 0.25),
           labelSmall: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5),
         ),
-        cardTheme: CardThemeData(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: darkColorScheme.outlineVariant, width: 1),
+        // Alt Navigasyon Barı Tasarımı
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: panelColor,
+          indicatorColor: primaryPurple.withValues(alpha: 0.2),
+          labelTextStyle: WidgetStateProperty.all(
+            const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8A8A93)),
           ),
-          color: darkColorScheme.surfaceContainer,
-          surfaceTintColor: Colors.transparent,
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const IconThemeData(color: primaryPurple);
+            }
+            return const IconThemeData(color: Color(0xFF8A8A93));
+          }),
         ),
       ),
       home: const AppShell(),

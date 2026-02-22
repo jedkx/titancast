@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../discovery/discovery_model.dart';
+import '../../../remote/brand_detector.dart';
 
 class DeviceListItem extends StatelessWidget {
   final DiscoveredDevice device;
@@ -17,117 +18,130 @@ class DeviceListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme   = Theme.of(context).textTheme;
-    final visuals     = _resolveVisuals(device.deviceType, colorScheme);
+    final visuals = _resolveVisuals(device.deviceType);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        shape: isConnected
-            ? RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: const Color(0xFF4CAF50).withValues(alpha: 0.6),
-            width: 1.5,
-          ),
-        )
-            : null,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                _DeviceIcon(visuals: visuals),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        device.displayName,
-                        style: textTheme.titleSmall?.copyWith(
-                          color: colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      _SupportingText(device: device),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                if (isConnected)
-                  const _ConnectedBadge()
-                else
-                  _MethodChip(method: device.method),
-              ],
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF15151A),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isConnected ? const Color(0xFF10B981) : Colors.white.withValues(alpha: 0.04),
+              width: 1.5,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52, height: 52,
+                decoration: BoxDecoration(color: const Color(0xFF22222A), borderRadius: BorderRadius.circular(16)),
+                child: Icon(visuals.icon, color: visuals.iconColor, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.displayName,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    _SupportingText(device: device),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (isConnected) const _ConnectedBadge() else _BrandOrMethodChip(device: device),
+            ],
           ),
         ),
       ),
     );
   }
 
-  DeviceVisuals _resolveVisuals(DeviceType type, ColorScheme cs) {
+  DeviceVisuals _resolveVisuals(DeviceType type) {
     return switch (type) {
-      DeviceType.tv      => DeviceVisuals(Icons.tv_rounded, cs.primaryContainer, cs.onPrimaryContainer),
-      DeviceType.speaker => DeviceVisuals(Icons.speaker_group_rounded, cs.secondaryContainer, cs.onSecondaryContainer),
-      DeviceType.other   => DeviceVisuals(Icons.devices_other_rounded, cs.surfaceContainerHighest, cs.onSurfaceVariant),
+      DeviceType.tv      => const DeviceVisuals(Icons.tv_rounded, Color(0xFFE2E2E6)),
+      DeviceType.speaker => const DeviceVisuals(Icons.speaker_group_rounded, Color(0xFFE2E2E6)),
+      DeviceType.other   => const DeviceVisuals(Icons.devices_other_rounded, Color(0xFF8A8A93)),
     };
   }
 }
 
+class _BrandOrMethodChip extends StatelessWidget {
+  final DiscoveredDevice device;
+  const _BrandOrMethodChip({required this.device});
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = device.detectedBrand;
+    final isBrand = brand != null && brand != TvBrand.unknown;
+    final label = isBrand ? _brandLabel(brand) : _methodLabel(device.method);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isBrand ? const Color(0xFF8B5CF6).withValues(alpha: 0.1) : const Color(0xFF22222A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isBrand ? const Color(0xFF8B5CF6).withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isBrand ? const Color(0xFF8B5CF6) : const Color(0xFF8A8A93),
+          fontWeight: FontWeight.w700,
+          fontSize: 10,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+
+  String _brandLabel(TvBrand brand) => switch (brand) {
+    TvBrand.samsung => 'Samsung', TvBrand.lg => 'LG', TvBrand.sony => 'Sony',
+    TvBrand.philips => 'Philips', TvBrand.hisense => 'Hisense', TvBrand.tcl => 'TCL',
+    TvBrand.panasonic => 'Panasonic', TvBrand.sharp => 'Sharp', TvBrand.toshiba => 'Toshiba',
+    TvBrand.google => 'Google', TvBrand.amazon => 'Amazon', TvBrand.apple => 'Apple',
+    TvBrand.roku => 'Roku', TvBrand.torima => 'Torima', TvBrand.unknown => 'Unknown',
+  };
+
+  String _methodLabel(DiscoveryMethod method) => switch (method) {
+    DiscoveryMethod.ssdp => 'SSDP', DiscoveryMethod.mdns => 'mDNS',
+    DiscoveryMethod.networkProbe => 'PROBE', DiscoveryMethod.manualIp => 'IP',
+    DiscoveryMethod.qr => 'QR',
+  };
+}
+
 class _ConnectedBadge extends StatelessWidget {
   const _ConnectedBadge();
-
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 8,
-          height: 8,
-          decoration: const BoxDecoration(
-            color: Color(0xFF4CAF50),
-            shape: BoxShape.circle,
-          ),
+          width: 8, height: 8,
+          decoration: BoxDecoration(color: const Color(0xFF10B981), shape: BoxShape.circle, boxShadow: [BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.4), blurRadius: 4)]),
         ),
         const SizedBox(width: 6),
-        const Text(
-          'Connected',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF4CAF50),
-            letterSpacing: 0.3,
-          ),
-        ),
+        const Text('Connected', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF10B981))),
       ],
-    );
-  }
-}
-
-class _DeviceIcon extends StatelessWidget {
-  final DeviceVisuals visuals;
-  const _DeviceIcon({required this.visuals});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: visuals.containerColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(visuals.icon, color: visuals.iconColor, size: 24),
     );
   }
 }
@@ -138,76 +152,18 @@ class _SupportingText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme   = Theme.of(context).textTheme;
-    final spans       = <InlineSpan>[];
-
+    final spans = <InlineSpan>[];
     if (device.manufacturer != null) {
-      spans.add(TextSpan(
-        text: device.manufacturer!,
-        style: textTheme.bodySmall?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w500,
-        ),
-      ));
-      spans.add(TextSpan(
-        text: '  ·  ',
-        style: textTheme.bodySmall?.copyWith(color: colorScheme.outline),
-      ));
+      spans.add(TextSpan(text: device.manufacturer!, style: const TextStyle(color: Color(0xFF8A8A93), fontWeight: FontWeight.w500, fontSize: 12)));
+      spans.add(const TextSpan(text: '  ·  ', style: TextStyle(color: Color(0xFF3F3F46))));
     }
-    spans.add(TextSpan(
-      text: device.ip,
-      style: textTheme.bodySmall?.copyWith(
-        color: colorScheme.outline,
-        fontFamily: 'monospace',
-      ),
-    ));
-
-    return RichText(
-      text: TextSpan(children: spans),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-}
-
-class _MethodChip extends StatelessWidget {
-  final DiscoveryMethod method;
-  const _MethodChip({required this.method});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme   = Theme.of(context).textTheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Text(
-        switch (method) {
-          DiscoveryMethod.ssdp         => 'SSDP',
-          DiscoveryMethod.mdns         => 'mDNS',
-          DiscoveryMethod.networkProbe => 'PROBE',
-          DiscoveryMethod.manualIp     => 'IP',
-          DiscoveryMethod.qr           => 'QR',
-        },
-        style: textTheme.labelSmall?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-        ),
-      ),
-    );
+    spans.add(TextSpan(text: device.ip, style: const TextStyle(color: Color(0xFF8A8A93), fontFamily: 'monospace', fontSize: 11)));
+    return RichText(text: TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis);
   }
 }
 
 class DeviceVisuals {
   final IconData icon;
-  final Color containerColor;
   final Color iconColor;
-  const DeviceVisuals(this.icon, this.containerColor, this.iconColor);
+  const DeviceVisuals(this.icon, this.iconColor);
 }
