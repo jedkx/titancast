@@ -1,8 +1,8 @@
-import 'dart:convert';
-
 enum DiscoveryMode { network, manualIp, qrScan }
 
 enum DiscoveryMethod { ssdp, mdns, networkProbe, manualIp, qr }
+
+enum DeviceType { tv, speaker, other }
 
 class DiscoveredDevice {
   final String ip;
@@ -33,8 +33,34 @@ class DiscoveredDevice {
     DateTime? addedAt,
   }) : addedAt = addedAt ?? DateTime.now();
 
-  /// The name shown in the UI. Returns [customName] if set, otherwise [friendlyName].
   String get displayName => customName ?? friendlyName;
+
+  // Derives device type from serviceType and friendlyName for filtering and
+  // icon resolution. Centralised here so UI and filter logic stay in sync.
+  DeviceType get deviceType {
+    final type = (serviceType ?? '').toLowerCase();
+    final name = friendlyName.toLowerCase();
+
+    if (type.contains('tv') ||
+        type.contains('renderer') ||
+        type.contains('dial') ||
+        type.contains('jointspace') ||
+        name.contains('tv') ||
+        name.contains('chromecast') ||
+        name.contains('bravia') ||
+        name.contains('fire')) {
+      return DeviceType.tv;
+    }
+    if (type.contains('audio') ||
+        type.contains('speaker') ||
+        name.contains('speaker') ||
+        name.contains('soundbar') ||
+        name.contains('sonos') ||
+        name.contains('homepod')) {
+      return DeviceType.speaker;
+    }
+    return DeviceType.other;
+  }
 
   DiscoveredDevice copyWith({
     String? ip,

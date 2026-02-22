@@ -1,14 +1,7 @@
 import '../discovery/discovery_model.dart';
 import 'device_repository.dart';
 
-/// Populates the repository with fake devices for emulator/UI testing.
-///
-/// Usage in HomeScreen._init():
-///   await seedDummyDevices(_repo);   // ← add this line
-///
-/// To clean up before release:
-///   1. Delete this file
-///   2. Remove the import and the one call above
+
 Future<void> seedDummyDevices(DeviceRepository repo) async {
   if (repo.devices.isNotEmpty) return;
 

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:network_info_plus/network_info_plus.dart';
-import 'package:titancast/ui/common/wifi_info_widget.dart';
+import 'package:titancast/ui/shared/wifi_info_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../discovery/discovery_model.dart';
@@ -143,7 +143,6 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
             children: [
               const Spacer(flex: 2),
 
-              // WiFi info widget — null iken skeleton gösterir
               WifiInfoWidget(ssid: _wifiName),
               const SizedBox(height: 16),
 

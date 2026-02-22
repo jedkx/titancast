@@ -3,10 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-// =============================================================================
-// Veri Modeli
-// =============================================================================
-
 class WifiNetworkInfo {
   final String ip;
   final String subnet;
@@ -27,10 +23,6 @@ class WifiNetworkInfo {
       'WifiNetworkInfo(ip: $ip, broadcast: $broadcastAddress, ssid: $ssid)';
 }
 
-// =============================================================================
-// Hata Sınıfları
-// =============================================================================
-
 class WifiPermissionDeniedException implements Exception {
   final String message;
   WifiPermissionDeniedException(this.message);
@@ -41,31 +33,27 @@ class WifiInfoException implements Exception {
   WifiInfoException(this.message);
 }
 
-// =============================================================================
-// Datasource — WiFi bilgisini güvenli şekilde okur
-// =============================================================================
-
 class WifiInfoDatasource {
   final _networkInfo = NetworkInfo();
 
   Future<WifiNetworkInfo?> getWifiInfo() async {
-    // 1. Önce izni kontrol et / iste
+    // Permission must already be requested by the caller.
+    // We re-check here as a safety net.
     final status = await Permission.locationWhenInUse.request();
 
     if (status.isPermanentlyDenied) {
       await openAppSettings();
       throw WifiPermissionDeniedException(
-        'Konum izni kalıcı olarak reddedildi. Ayarlardan açın.',
+        'Location permission permanently denied. Enable it in Settings.',
       );
     }
 
     if (!status.isGranted) {
       throw WifiPermissionDeniedException(
-        'Cihaz keşfi için konum izni gerekli.',
+        'Location permission is required for device discovery.',
       );
     }
 
-    // 2. WiFi bilgisini paralel oku, 5 saniye timeout
     try {
       final results = await Future.wait([
         _networkInfo.getWifiIP(),
@@ -80,9 +68,9 @@ class WifiInfoDatasource {
       final ip     = results[0];
       final subnet = results[1];
       final bssid  = results[2];
-      final ssid   = results[3];
+      // Strip Android-injected surrounding quotes: "HomeNetwork" → HomeNetwork
+      final ssid   = results[3]?.replaceAll('"', '').trim();
 
-      // 3. IP null / boş ise WiFi bağlı değil
       if (ip == null || ip.isEmpty) return null;
 
       final finalSubnet =
@@ -92,19 +80,17 @@ class WifiInfoDatasource {
         ip: ip,
         subnet: finalSubnet,
         broadcastAddress: _computeBroadcast(ip, finalSubnet),
-        ssid: ssid,
+        ssid: (ssid == null || ssid.isEmpty) ? null : ssid,
         bssid: bssid,
       );
     } on TimeoutException {
       return null;
     } catch (e) {
       if (e is WifiPermissionDeniedException) rethrow;
-      throw WifiInfoException('WiFi bilgisi alınamadı: $e');
+      throw WifiInfoException('Failed to read Wi-Fi info: $e');
     }
   }
 
-  /// Subnet mask'tan broadcast adresini hesaplar.
-  /// Örnek: ip=192.168.1.50, mask=255.255.255.0 → 192.168.1.255
   String _computeBroadcast(String ip, String mask) {
     try {
       final ipParts   = ip.split('.').map(int.parse).toList();
@@ -121,13 +107,7 @@ class WifiInfoDatasource {
   }
 }
 
-// =============================================================================
-// WifiInfoWidget — UI widget (ssid string ile çağrılır)
-// home_screen.dart ve network_scan_screen.dart bunu import eder
-// =============================================================================
-
 class WifiInfoWidget extends StatelessWidget {
-  /// Gösterilecek WiFi ağ adı. null ise skeleton / "Connecting..." gösterilir.
   final String? ssid;
 
   const WifiInfoWidget({super.key, required this.ssid});
@@ -137,27 +117,19 @@ class WifiInfoWidget extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme   = Theme.of(context).textTheme;
 
-    // SSID hâlâ yükleniyorsa skeleton animasyonu göster
     if (ssid == null) {
       return _WifiSkeleton(colorScheme: colorScheme);
     }
 
-    // SSID tırnak içinde geliyorsa temizle: "MyWiFi" → MyWiFi
-    final cleanSsid = ssid!.replaceAll('"', '');
-
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.wifi_rounded,
-          size: 14,
-          color: Colors.white,
-        ),
+        const Icon(Icons.wifi_rounded, size: 14, color: Colors.white),
         const SizedBox(width: 4),
         Text(
-          cleanSsid.isEmpty ? 'Not connected' : cleanSsid,
+          ssid!.isEmpty ? 'Not connected' : ssid!,
           style: textTheme.labelSmall?.copyWith(
-            color: cleanSsid.isEmpty
+            color: ssid!.isEmpty
                 ? colorScheme.error
                 : colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
@@ -170,7 +142,6 @@ class WifiInfoWidget extends StatelessWidget {
   }
 }
 
-// Yükleniyor animasyonu — SSID null iken gösterilir
 class _WifiSkeleton extends StatefulWidget {
   final ColorScheme colorScheme;
   const _WifiSkeleton({required this.colorScheme});
@@ -207,8 +178,8 @@ class _WifiSkeletonState extends State<_WifiSkeleton>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.wifi_rounded, size: 14,
-              color: widget.colorScheme.onSurfaceVariant),
+          Icon(Icons.wifi_rounded,
+              size: 14, color: widget.colorScheme.onSurfaceVariant),
           const SizedBox(width: 4),
           Container(
             width: 60,

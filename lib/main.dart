@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'ui/home/home_screen.dart';
+import 'ui/app_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,44 +33,23 @@ class TitanCastApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: darkColorScheme,
         textTheme: Typography.material2021().white.copyWith(
-          headlineMedium: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w400,
-          ),
-          titleLarge: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w400,
-          ),
-          titleMedium: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.15,
-          ),
-          bodyMedium: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w400,
-            letterSpacing: 0.25,
-          ),
-          labelSmall: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.5,
-          ),
+          headlineMedium: const TextStyle(fontSize: 28, fontWeight: FontWeight.w400),
+          titleLarge: const TextStyle(fontSize: 22, fontWeight: FontWeight.w400),
+          titleMedium: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: 0.15),
+          bodyMedium: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, letterSpacing: 0.25),
+          labelSmall: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5),
         ),
         cardTheme: CardThemeData(
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: darkColorScheme.outlineVariant,
-              width: 1,
-            ),
+            side: BorderSide(color: darkColorScheme.outlineVariant, width: 1),
           ),
           color: darkColorScheme.surfaceContainer,
           surfaceTintColor: Colors.transparent,
         ),
       ),
-      home: const HomeScreen(),
+      home: const AppShell(),
     );
   }
 }
