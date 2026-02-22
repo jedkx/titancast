@@ -53,6 +53,7 @@ class SsdpDiscoveryService {
         InternetAddress.anyIPv4,
         0,
         reuseAddress: true,
+        reusePort: false,
       );
       _socket?.broadcastEnabled = true;
       _socket?.multicastLoopback = false;
@@ -73,8 +74,8 @@ class SsdpDiscoveryService {
 
       Timer(timeout, stopDiscovery);
     } catch (e) {
-      _controller?.addError('SSDP socket error: $e');
-      stopDiscovery();
+      print('SSDP socket error: $e');
+      _cleanup();
     }
   }
 

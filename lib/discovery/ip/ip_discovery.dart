@@ -11,14 +11,22 @@ class IpDiscoveryService {
 
   // UPnP description XML endpoints ordered by likelihood of success.
   static const List<_PortPath> _upnpEndpoints = [
-    _PortPath(49152, '/description.xml'),
-    _PortPath(49153, '/description.xml'),
-    _PortPath(8080, '/description.xml'),
-    _PortPath(8008, '/ssdp/device-desc.xml'),
-    _PortPath(80, '/description.xml'),
+    _PortPath(8008, '/ssdp/device-desc.xml'),   // Chromecast, Android TV
+    _PortPath(8080, '/description.xml'),         // Generic smart TV
+    _PortPath(80,   '/description.xml'),         // LG WebOS, Samsung
+    _PortPath(49152, '/description.xml'),        // UPnP dynamic port
+    _PortPath(49153, '/description.xml'),        // UPnP dynamic port
   ];
 
-  static const List<int> _probePorts = [1925, 1926, 8008, 8080, 80, 49152];
+  static const List<int> _probePorts = [
+    4352,               // PJLink — Epson, Sony, Panasonic, BenQ, Optoma, NEC, JVC
+    3629,               // Epson ESC/VP.net
+    1925, 1926,         // Philips JointSpace
+    8008, 8080,         // Chromecast / Android TV
+    80, 443,            // HTTP / HTTPS
+    53484,              // Sony PJ Talk
+    49152, 49153,       // UPnP dynamic ports
+  ];
 
   StreamController<DiscoveredDevice>? _controller;
   bool _isActive = false;
@@ -27,7 +35,7 @@ class IpDiscoveryService {
   /// Returns a single-emission stream that closes when resolution completes.
   Stream<DiscoveredDevice> resolve({
     required String ip,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 20),
   }) {
     // Clean up any leftover state from a previous call.
     stopDiscovery();
@@ -71,7 +79,13 @@ class IpDiscoveryService {
   Future<void> _runResolution(String ip) async {
     if (!_isActive) return;
 
-    // Step 1: UPnP description XML.
+    if (!_isActive) return;
+    final projDevice = await _tryPJLink(ip);
+    if (projDevice != null) {
+      _emit(projDevice);
+      return;
+    }
+
     for (final endpoint in _upnpEndpoints) {
       if (!_isActive) return;
       final device = await _tryUpnpDescription(ip, endpoint);
@@ -174,19 +188,103 @@ class IpDiscoveryService {
   }
 
   Future<int?> _findOpenPort(String ip, List<int> ports) async {
+    final completer = Completer<int?>();
+    int remaining = ports.length;
+
     for (final port in ports) {
-      try {
-        final socket = await Socket.connect(ip, port, timeout: _socketTimeout);
+      Socket.connect(ip, port, timeout: _socketTimeout).then((socket) {
         socket.destroy();
-        return port;
-      } catch (_) {}
+        if (!completer.isCompleted) completer.complete(port);
+      }).catchError((_) {
+        remaining--;
+        if (remaining <= 0 && !completer.isCompleted) completer.complete(null);
+      });
     }
-    return null;
+
+    return completer.future;
   }
 
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // PJLink —  (TCP 4352)
+  // ---------------------------------------------------------------------------
+
+  Future<DiscoveredDevice?> _tryPJLink(String ip) async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(
+        ip, 4352,
+        timeout: const Duration(milliseconds: 800),
+      );
+
+      final buffer = StringBuffer();
+      await for (final chunk in socket
+          .map(utf8.decode)
+          .timeout(const Duration(seconds: 2))) {
+        buffer.write(chunk);
+        if (buffer.toString().contains('\r')) break;
+      }
+
+      final greeting = buffer.toString().trim();
+      if (!greeting.startsWith('PJLINK')) return null;
+
+      if (greeting.startsWith('PJLINK 1')) {
+        socket.destroy();
+        return DiscoveredDevice(
+          ip: ip,
+          friendlyName: 'Projector at $ip',
+          method: DiscoveryMethod.manualIp,
+          serviceType: 'Projector',
+          port: 4352,
+        );
+      }
+      String? name;
+      String? manufacturer;
+      String? model;
+
+      for (final query in ['%1NAME ?', '%1INF1 ?', '%1INF2 ?']) {
+        socket.write('$query\r');
+        final resp = StringBuffer();
+        await for (final chunk in socket
+            .map(utf8.decode)
+            .timeout(const Duration(seconds: 2))) {
+          resp.write(chunk);
+          if (resp.toString().contains('\r')) break;
+        }
+        final line = resp.toString().trim();
+        if (query.contains('NAME')) name = _parsePJLink(line, 'NAME');
+        if (query.contains('INF1')) manufacturer = _parsePJLink(line, 'INF1');
+        if (query.contains('INF2')) model = _parsePJLink(line, 'INF2');
+      }
+
+      socket.destroy();
+
+      return DiscoveredDevice(
+        ip: ip,
+        friendlyName: name ?? model ?? 'Projector at $ip',
+        method: DiscoveryMethod.manualIp,
+        manufacturer: manufacturer,
+        modelName: model,
+        serviceType: 'Projector',
+        port: 4352,
+      );
+    } catch (_) {
+      socket?.destroy();
+      return null;
+    }
+  }
+
+  String? _parsePJLink(String raw, String command) {
+    final prefix = '%1$command=';
+    if (!raw.startsWith(prefix)) return null;
+    final value = raw.substring(prefix.length).trim();
+    // ERR1/ERR2 hata kodlarını görmezden gel
+    if (value.startsWith('ERR') || value.isEmpty) return null;
+    return value;
+  }
 
   /// Converts "urn:schemas-upnp-org:device:MediaRenderer:1" -> "MediaRenderer"
   String? _cleanServiceType(String? raw) {

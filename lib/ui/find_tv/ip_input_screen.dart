@@ -31,16 +31,23 @@ class _IpInputScreenState extends State<IpInputScreen> {
     if (value == null || value.trim().isEmpty) {
       return 'Please enter an IP address';
     }
-    final parts = value.trim().split('.');
+    final trimmed = value.trim();
+    final parts = trimmed.split('.');
     if (parts.length != 4) {
       return 'Enter a valid IPv4 address (e.g. 192.168.1.100)';
     }
+    final nums = <int>[];
     for (final part in parts) {
+      if (part.isEmpty) return 'Enter a valid IPv4 address';
       final n = int.tryParse(part);
       if (n == null || n < 0 || n > 255) {
         return 'Each segment must be between 0 and 255';
       }
+      nums.add(n);
     }
+    if (nums[0] == 0) return 'Invalid address — first segment cannot be 0';
+    if (nums.every((n) => n == 255)) return 'Invalid address — broadcast address';
+    if (nums[0] == 127) return 'That\'s your own device (loopback), enter your TV\'s IP';
     return null;
   }
 

@@ -38,20 +38,35 @@ class NetworkProbeDiscoveryService {
       );
       if (interfaces.isEmpty) return;
 
-      final myIp = interfaces.first.addresses.first.address;
+      final wifiInterface = interfaces.firstWhere(
+            (iface) {
+          final name = iface.name.toLowerCase();
+          return name.contains('wlan') ||
+              name.contains('wifi') ||
+              name.contains('en0') ||
+              name.contains('wlp');
+        },
+        orElse: () => interfaces.first,
+      );
+      final myIp = wifiInterface.addresses.first.address;
       final subnet = myIp.substring(0, myIp.lastIndexOf('.'));
 
+      final futures = <Future>[];
       for (int i = 1; i < 255; i++) {
         if (!_isDiscovering) break;
         final targetIp = '$subnet.$i';
         if (targetIp == myIp) continue;
-        _checkDevice(targetIp, ports);
+        futures.add(_checkDevice(targetIp, ports));
         if (i % 25 == 0) {
           await Future.delayed(const Duration(milliseconds: 50));
         }
       }
+      // Close the stream after all devices have been checked.
+      await Future.wait(futures);
     } catch (e) {
       _controller?.addError('Network probe error: $e');
+    } finally {
+      stopDiscovery();
     }
   }
 

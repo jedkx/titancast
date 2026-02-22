@@ -39,14 +39,20 @@ class DiscoveryManager {
   }
 
   void _startNetworkDiscovery(Duration timeout) {
+    int _activeSources = 2;
+
+    void onSourceDone() {
+      _activeSources--;
+      if (_activeSources <= 0) _closeController();
+    }
+
     _ssdpService
         .discover(timeout: timeout)
-        .listen(_processDevice, onError: _handleError);
+        .listen(_processDevice, onError: _handleError, onDone: onSourceDone);
 
     _mdnsService
         .discover(timeout: timeout)
-        .listen(_processDevice, onError: _handleError);
-
+        .listen(_processDevice, onError: _handleError, onDone: onSourceDone);
     Future.delayed(const Duration(milliseconds: 200), () {
       if (_mainController?.isClosed == true) return;
       _probeService
