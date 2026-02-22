@@ -33,7 +33,6 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
   @override
   void initState() {
     super.initState();
-    _fetchWifiName();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -41,18 +40,26 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
     _pulseAnimation = Tween<double>(begin: 0.92, end: 1.08).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    // Scan başlatıldığında izin zaten istenecek (_startScan içinde).
+    // WiFi adını oradan sonra çekeceğiz — izin garantili olunca.
     WidgetsBinding.instance.addPostFrameCallback((_) => _startScan());
   }
 
+  /// İzin verildikten SONRA WiFi adını çeker.
+  /// _startScan() içinden çağrılır, böylece izin garantilidir.
   Future<void> _fetchWifiName() async {
     try {
-      final info = await NetworkInfo().getWifiName();
-      if (mounted) setState(() => _wifiName = info);
+      final info = await NetworkInfo().getWifiName().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
+      // Android'de SSID tırnak içinde gelebilir: "MyWiFi" → MyWiFi
+      final cleaned = info?.replaceAll('"', '');
+      if (mounted) setState(() => _wifiName = cleaned);
     } catch (_) {
       if (mounted) setState(() => _wifiName = null);
     }
   }
-
 
   @override
   void dispose() {
@@ -61,6 +68,7 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
   }
 
   Future<void> _startScan() async {
+    // 1. İzni iste
     final status = await Permission.location.request();
     if (!status.isGranted) {
       if (mounted) {
@@ -72,6 +80,9 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
       return;
     }
 
+    // 2. İzin alındı → artık WiFi adını güvenle çekebiliriz
+    await _fetchWifiName();
+
     if (!mounted) return;
     setState(() {
       _isScanning = true;
@@ -81,22 +92,19 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
     });
     _pulseController.repeat(reverse: true);
 
-    // Create the stream, pass to HomeScreen via callback
+    // 3. Discovery stream'i oluştur ve HomeScreen'e ilet
     final stream = _manager.startDiscovery(
       mode: DiscoveryMode.network,
       timeout: const Duration(seconds: 15),
     );
     widget.onDiscoveryStarted(stream);
 
-    // Listen locally to count real devices; scan bitene kadar ekranda tut
+    // 4. Lokal sayaç — gerçek cihazları say
     stream.listen(
-      (device) {
+          (device) {
         if (!mounted) return;
-        // Skip placeholders -- wait for a real device name
         if (device.friendlyName.startsWith('Identifying')) return;
-        setState(() {
-          _deviceCount++;
-        });
+        setState(() => _deviceCount++);
       },
       onDone: () {
         if (!mounted) return;
@@ -105,7 +113,6 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
           _isScanning = false;
           _statusMessage = 'Scan complete.';
         });
-        // Scan tamamlanınca My Devices'a yönlendir
         _navigateBackToResults();
       },
     );
@@ -114,7 +121,6 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
   void _navigateBackToResults() {
     if (_navigatedBack || !mounted) return;
     _navigatedBack = true;
-    // Pop all the way back to HomeScreen (My Devices)
     Navigator.popUntil(context, (route) => route.isFirst);
   }
 
@@ -137,7 +143,7 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
             children: [
               const Spacer(flex: 2),
 
-              // WiFi info widget
+              // WiFi info widget — null iken skeleton gösterir
               WifiInfoWidget(ssid: _wifiName),
               const SizedBox(height: 16),
 
@@ -148,7 +154,8 @@ class _NetworkScanScreenState extends State<NetworkScanScreen>
                   width: 128,
                   height: 128,
                   decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+                    color:
+                    colorScheme.primaryContainer.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(

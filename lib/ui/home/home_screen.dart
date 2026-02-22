@@ -1,6 +1,7 @@
-import 'package:network_info_plus/network_info_plus.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 import '../../discovery/discovery_model.dart';
 import '../../discovery/discovery_manager.dart';
 import '../find_tv/find_tv_screen.dart';
@@ -14,21 +15,39 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-    String? _wifiName;
-    @override
-    void initState() {
-      super.initState();
-      _fetchWifiName();
-    }
+  String? _wifiName;
 
-    Future<void> _fetchWifiName() async {
-      try {
-        final info = await NetworkInfo().getWifiName();
-        if (mounted) setState(() => _wifiName = info);
-      } catch (_) {
-        if (mounted) setState(() => _wifiName = null);
+  @override
+  void initState() {
+    super.initState();
+    // İzin kontrolü yaparak WiFi adını çek
+    _fetchWifiName();
+  }
+
+  /// İzin kontrolü yaparak WiFi adını güvenli şekilde çeker.
+  /// SSID Android'de konum izni olmadan null döner — bu yüzden önce izin istiyoruz.
+  Future<void> _fetchWifiName() async {
+    try {
+      // Önce izni kontrol et (daha önce verilmiş olabilir, tekrar sormaz)
+      final status = await Permission.locationWhenInUse.request();
+      if (!status.isGranted) {
+        // İzin yoksa widget "Not connected" gösterir, devam edebiliriz
+        return;
       }
+
+      final info = await NetworkInfo().getWifiName().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
+
+      if (mounted) {
+        setState(() => _wifiName = info);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _wifiName = null);
     }
+  }
+
   final List<DiscoveredDevice> _devices = [];
   bool _isLoading = false;
   final DiscoveryManager _discoveryManager = DiscoveryManager();
@@ -47,6 +66,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+    // FindTvScreen'den dönünce WiFi adını yenile
+    _fetchWifiName();
   }
 
   void _attachDiscoveryStream(Stream<DiscoveredDevice> stream) {
@@ -59,7 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) setState(() => _isLoading = false);
       },
     );
-
   }
 
   void _bufferUpdate(DiscoveredDevice device) {
@@ -129,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
+                  // _wifiName null iken skeleton gösterilir, gelince SSID
                   WifiInfoWidget(ssid: _wifiName),
                 ],
               ),
@@ -192,7 +213,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
 
-      // Single FAB -- only in home screen, not duplicated
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: _FindTvFab(
         isLoading: _isLoading,
@@ -249,7 +269,7 @@ class _EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 48),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 96,
@@ -333,7 +353,7 @@ class _FindTvFab extends StatelessWidget {
 }
 
 // =============================================================================
-// Device list item -- public, reusable
+// Device list item — public, reusable
 // =============================================================================
 
 class DeviceListItem extends StatelessWidget {
@@ -364,7 +384,8 @@ class DeviceListItem extends StatelessWidget {
                     color: visuals.containerColor,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(visuals.icon, color: visuals.iconColor, size: 24),
+                  child:
+                  Icon(visuals.icon, color: visuals.iconColor, size: 24),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -410,13 +431,21 @@ class DeviceListItem extends StatelessWidget {
         name.contains('speaker') ||
         name.contains('soundbar');
 
-    final bool isRouter =
-        type.contains('router') || type.contains('gateway') || name.contains('router');
+    final bool isRouter = type.contains('router') ||
+        type.contains('gateway') ||
+        name.contains('router');
 
-    if (isTV) return _DeviceVisuals(Icons.tv_rounded, cs.primaryContainer, cs.onPrimaryContainer);
-    if (isAudio) return _DeviceVisuals(Icons.speaker_group_rounded, cs.secondaryContainer, cs.onSecondaryContainer);
-    if (isRouter) return _DeviceVisuals(Icons.router_rounded, cs.tertiaryContainer, cs.onTertiaryContainer);
-    return _DeviceVisuals(Icons.devices_other_rounded, cs.surfaceContainerHighest, cs.onSurfaceVariant);
+    if (isTV)
+      return _DeviceVisuals(
+          Icons.tv_rounded, cs.primaryContainer, cs.onPrimaryContainer);
+    if (isAudio)
+      return _DeviceVisuals(Icons.speaker_group_rounded,
+          cs.secondaryContainer, cs.onSecondaryContainer);
+    if (isRouter)
+      return _DeviceVisuals(Icons.router_rounded, cs.tertiaryContainer,
+          cs.onTertiaryContainer);
+    return _DeviceVisuals(Icons.devices_other_rounded,
+        cs.surfaceContainerHighest, cs.onSurfaceVariant);
   }
 }
 
@@ -485,11 +514,11 @@ class _MethodChip extends StatelessWidget {
   }
 
   String _label(DiscoveryMethod m) => switch (m) {
-    DiscoveryMethod.ssdp         => 'SSDP',
-    DiscoveryMethod.mdns         => 'mDNS',
+    DiscoveryMethod.ssdp => 'SSDP',
+    DiscoveryMethod.mdns => 'mDNS',
     DiscoveryMethod.networkProbe => 'PROBE',
-    DiscoveryMethod.manualIp     => 'IP',
-    DiscoveryMethod.qr           => 'QR',
+    DiscoveryMethod.manualIp => 'IP',
+    DiscoveryMethod.qr => 'QR',
   };
 }
 
