@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum DiscoveryMode { network, manualIp, qrScan }
 
 enum DiscoveryMethod { ssdp, mdns, networkProbe, manualIp, qr }
@@ -12,8 +14,11 @@ class DiscoveredDevice {
   final String? modelName;
   final int? port;
   final Map<String, dynamic> rawHeaders;
+  final String? ssid;
+  final String? customName;
+  final DateTime addedAt;
 
-  const DiscoveredDevice({
+  DiscoveredDevice({
     required this.ip,
     required this.friendlyName,
     required this.method,
@@ -23,12 +28,14 @@ class DiscoveredDevice {
     this.modelName,
     this.port,
     this.rawHeaders = const {},
-  });
+    this.ssid,
+    this.customName,
+    DateTime? addedAt,
+  }) : addedAt = addedAt ?? DateTime.now();
 
-  /// Creates a modified copy of this device with the given fields replaced.
-  ///
-  /// Used by [DiscoveryManager] to upgrade a placeholder device with richer data
-  /// (e.g. probe found the IP, SSDP later provided the friendly name).
+  /// The name shown in the UI. Returns [customName] if set, otherwise [friendlyName].
+  String get displayName => customName ?? friendlyName;
+
   DiscoveredDevice copyWith({
     String? ip,
     String? friendlyName,
@@ -39,6 +46,10 @@ class DiscoveredDevice {
     String? modelName,
     int? port,
     Map<String, dynamic>? rawHeaders,
+    String? ssid,
+    String? customName,
+    bool clearCustomName = false,
+    DateTime? addedAt,
   }) {
     return DiscoveredDevice(
       ip: ip ?? this.ip,
@@ -50,6 +61,45 @@ class DiscoveredDevice {
       modelName: modelName ?? this.modelName,
       port: port ?? this.port,
       rawHeaders: rawHeaders ?? this.rawHeaders,
+      ssid: ssid ?? this.ssid,
+      customName: clearCustomName ? null : (customName ?? this.customName),
+      addedAt: addedAt ?? this.addedAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'ip': ip,
+    'friendlyName': friendlyName,
+    'method': method.name,
+    'location': location,
+    'serviceType': serviceType,
+    'manufacturer': manufacturer,
+    'modelName': modelName,
+    'port': port,
+    'ssid': ssid,
+    'customName': customName,
+    'addedAt': addedAt.toIso8601String(),
+    // rawHeaders intentionally excluded — large and re-fetched on connect
+  };
+
+  factory DiscoveredDevice.fromJson(Map<String, dynamic> json) {
+    return DiscoveredDevice(
+      ip: json['ip'] as String,
+      friendlyName: json['friendlyName'] as String,
+      method: DiscoveryMethod.values.firstWhere(
+            (e) => e.name == json['method'],
+        orElse: () => DiscoveryMethod.manualIp,
+      ),
+      location: json['location'] as String?,
+      serviceType: json['serviceType'] as String?,
+      manufacturer: json['manufacturer'] as String?,
+      modelName: json['modelName'] as String?,
+      port: json['port'] as int?,
+      ssid: json['ssid'] as String?,
+      customName: json['customName'] as String?,
+      addedAt: json['addedAt'] != null
+          ? DateTime.tryParse(json['addedAt'] as String) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 
@@ -65,5 +115,5 @@ class DiscoveredDevice {
 
   @override
   String toString() =>
-      'DiscoveredDevice(ip: $ip, name: $friendlyName, method: ${method.name})';
+      'DiscoveredDevice(ip: $ip, name: $displayName, ssid: $ssid, method: ${method.name})';
 }

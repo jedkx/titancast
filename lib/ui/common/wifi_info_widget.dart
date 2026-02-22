@@ -151,7 +151,7 @@ class WifiInfoWidget extends StatelessWidget {
         Icon(
           Icons.wifi_rounded,
           size: 14,
-          color: colorScheme.primary,
+          color: Colors.white,
         ),
         const SizedBox(width: 4),
         Text(
