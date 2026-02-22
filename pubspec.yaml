@@ -1,0 +1,31 @@
+name: titancast
+description: "Universal Smart TV Remote Control Application"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+
+  # Network
+  http: ^1.2.0
+  xml: ^6.3.0
+  connectivity_plus: ^7.0.0
+  network_info_plus: ^7.0.0
+  multicast_dns: ^0.3.2+4
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
