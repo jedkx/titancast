@@ -3,8 +3,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:titancast/core/app_logger.dart';
 import 'package:titancast/remote/remote_command.dart';
 import 'package:titancast/remote/protocol/tv_protocol.dart';
+
+const _tag = 'LgProtocol';
 
 /// Controls LG Smart TVs (webOS 2014+) via the SSAP (Second Screen Application Protocol).
 ///
@@ -26,88 +29,150 @@ class LgProtocol implements TvProtocol {
   bool _connected = false;
   int _msgId = 0;
 
-  // Pending request completers keyed by message id.
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
   Completer<void>? _connectCompleter;
-
-  // Pairing client key stored in SharedPreferences.
   String? _clientKey;
+
   static const String _prefKeyPrefix = 'lg_client_key_';
 
+  Completer<void>? _socketOpenCompleter;
+
   LgProtocol({required this.ip, this.port = 3000});
+
+  @override
+  bool get isConnected => _connected;
 
   // ---------------------------------------------------------------------------
   // TvProtocol
   // ---------------------------------------------------------------------------
 
   @override
-  bool get isConnected => _connected;
-
-  @override
   Future<void> connect() async {
-    // Load persisted client key for this IP (skip re-pairing if already paired).
+    AppLogger.i(_tag, '── connect() start ─────────────────────────────');
+    AppLogger.d(_tag, 'loading persisted client-key for $ip');
     final prefs = await SharedPreferences.getInstance();
     _clientKey = prefs.getString('$_prefKeyPrefix$ip');
+    AppLogger.d(_tag, 'clientKey: ${_clientKey != null ? "found (cached, skip re-pair)" : "not found (first-time pairing)"}');
 
     final uri = Uri.parse('ws://$ip:$port');
-    _connectCompleter = Completer<void>();
+    AppLogger.d(_tag, 'opening WebSocket → $uri');
+
+    _connectCompleter  = Completer<void>();
+    _socketOpenCompleter = Completer<void>();
     _channel = WebSocketChannel.connect(uri);
 
     _sub = _channel!.stream.listen(
       _onMessage,
       onError: (Object e) {
         _connected = false;
+        AppLogger.e(_tag, 'WebSocket stream error: $e');
+        final err = TvProtocolException(
+          'LG: Bağlantı hatası. TV\'nin açık ve aynı ağda olduğundan emin olun. ($e)',
+        );
+        if (_socketOpenCompleter?.isCompleted == false) {
+          _socketOpenCompleter!.completeError(err);
+        }
         if (_connectCompleter?.isCompleted == false) {
-          _connectCompleter!.completeError(TvProtocolException('$e'));
+          _connectCompleter!.completeError(err);
         }
       },
-      onDone: () => _connected = false,
+      onDone: () {
+        _connected = false;
+        AppLogger.w(_tag, 'WebSocket stream closed (onDone)');
+        if (_socketOpenCompleter?.isCompleted == false) {
+          _socketOpenCompleter!.completeError(
+              const TvProtocolException('LG: Bağlantı beklenmedik şekilde kapandı.'));
+        }
+        if (_connectCompleter?.isCompleted == false) {
+          _connectCompleter!.completeError(
+              const TvProtocolException('LG: Bağlantı beklenmedik şekilde kapandı.'));
+        }
+      },
     );
 
-    // Send the registration handshake immediately after socket opens.
+    AppLogger.d(_tag, 'sending SSAP register handshake (clientKey=${_clientKey != null})');
     _sendRegister();
 
-    await _connectCompleter!.future.timeout(
-      const Duration(seconds: 60), // user may need time to approve on TV
-      onTimeout: () => throw TvProtocolException(
-        'LG: pairing timed out. Accept the connection prompt on your TV.',
-      ),
+    // ── Phase 1: wait for first WS message (TCP confirmed) ──
+    AppLogger.d(_tag, 'phase 1: waiting for first WebSocket message (timeout=4s)');
+    final sw = Stopwatch()..start();
+    await _socketOpenCompleter!.future.timeout(
+      const Duration(seconds: 4),
+      onTimeout: () {
+        AppLogger.e(_tag, 'phase 1 timeout (4s) — TV bekleme modunda veya yanıt vermiyor');
+        throw const TvProtocolException(
+          'LG: TV bekleme modunda veya yanıt vermiyor. '
+          'TV\'yi tamamen açıp tekrar deneyin.',
+        );
+      },
     );
+    AppLogger.d(_tag, 'phase 1 done: first message received in ${sw.elapsedMilliseconds}ms');
+
+    // ── Phase 2: wait for registered event ──
+    final pairingTimeout = _clientKey != null
+        ? const Duration(seconds: 8)
+        : const Duration(seconds: 60);
+    AppLogger.d(_tag, 'phase 2: waiting for "registered" event '
+        '(mode=${_clientKey != null ? "cached-key" : "user-prompt"}, '
+        'timeout=${pairingTimeout.inSeconds}s)');
+
+    await _connectCompleter!.future.timeout(
+      pairingTimeout,
+      onTimeout: () {
+        AppLogger.e(_tag, 'phase 2 timeout (${pairingTimeout.inSeconds}s) — '
+            '${_clientKey != null ? "TV yanıtsız" : "kullanıcı onaylamadı"}');
+        throw TvProtocolException(
+          _clientKey != null
+              ? 'LG: TV yanıt vermiyor. TV\'yi yeniden başlatıp tekrar deneyin.'
+              : 'LG: Eşleştirme zaman aşımı. TV ekranında "Bağlanmaya İzin Ver" seçeneğine basın.',
+        );
+      },
+    );
+    sw.stop();
+    AppLogger.i(_tag, 'connect() complete in ${sw.elapsedMilliseconds}ms');
   }
 
   @override
   Future<void> sendCommand(RemoteCommand command) async {
-    if (!_connected) throw TvProtocolException('Not connected');
+    if (!_connected) {
+      AppLogger.w(_tag, 'sendCommand($command) called while disconnected');
+      throw TvProtocolException('Not connected');
+    }
 
-    final uri = _commandMap[command];
-    if (uri == null) {
-      debugPrint('LgProtocol: no SSAP URI for $command');
+    final entry = _commandMap[command];
+    if (entry == null) {
+      AppLogger.w(_tag, 'sendCommand: no SSAP URI mapped for $command — dropped');
       return;
     }
 
-    final payload = uri['payload'] as Map<String, dynamic>?;
-    await _request(uri['uri'] as String, payload: payload);
+    final ssapUri = entry['uri'] as String;
+    final payload = entry['payload'] as Map<String, dynamic>?;
+    AppLogger.d(_tag, '→ sendCommand($command): ssap=$ssapUri payload=$payload');
+
+    final sw = Stopwatch()..start();
+    await _request(ssapUri, payload: payload);
+    sw.stop();
+    AppLogger.v(_tag, '← sendCommand($command) OK in ${sw.elapsedMilliseconds}ms');
   }
 
   @override
   Future<void> disconnect() async {
+    AppLogger.i(_tag, 'disconnect(): pending=${_pending.length} requests will be cancelled');
     _connected = false;
     for (final c in _pending.values) {
-      if (!c.isCompleted) {
-        c.completeError(TvProtocolException('Disconnected'));
-      }
+      if (!c.isCompleted) c.completeError(TvProtocolException('Disconnected'));
     }
     _pending.clear();
     await _sub?.cancel();
     await _channel?.sink.close();
     _channel = null;
+    AppLogger.i(_tag, 'disconnect(): WebSocket closed');
   }
 
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------
 
-  /// Sends the SSAP register message (handshake).
   void _sendRegister() {
     final msg = <String, dynamic>{
       'type': 'register',
@@ -126,49 +191,25 @@ class LgProtocol implements TvProtocol {
             'localizedAppNames': {'': 'TitanCast'},
             'localizedVendorNames': {'': 'TitanCast'},
             'permissions': [
-              'TEST_SECURE',
-              'CONTROL_INPUT_JOYSTICK',
-              'CONTROL_MOUSE_AND_KEYBOARD',
-              'READ_INSTALLED_APPS',
-              'READ_LGE_SDX',
-              'READ_NOTIFICATIONS',
-              'SEARCH',
-              'WRITE_SETTINGS',
-              'WRITE_NOTIFICATION_ALERT',
-              'CONTROL_POWER',
-              'READ_CURRENT_CHANNEL',
-              'READ_RUNNING_APPS',
-              'READ_UPDATE_INFO',
-              'UPDATE_FROM_REMOTE_APP',
-              'READ_LGE_TV_INPUT_EVENTS',
+              'TEST_SECURE', 'CONTROL_INPUT_JOYSTICK',
+              'CONTROL_MOUSE_AND_KEYBOARD', 'READ_INSTALLED_APPS',
+              'READ_LGE_SDX', 'READ_NOTIFICATIONS', 'SEARCH',
+              'WRITE_SETTINGS', 'WRITE_NOTIFICATION_ALERT', 'CONTROL_POWER',
+              'READ_CURRENT_CHANNEL', 'READ_RUNNING_APPS', 'READ_UPDATE_INFO',
+              'UPDATE_FROM_REMOTE_APP', 'READ_LGE_TV_INPUT_EVENTS',
               'READ_TV_CURRENT_TIME',
             ],
             'serial': '2f930e2d2cfe083771f68e4fe7bb07',
           },
           'permissions': [
-            'LAUNCH',
-            'LAUNCH_WEBAPP',
-            'APP_TO_APP',
-            'CLOSE',
-            'TEST_OPEN',
-            'TEST_PROTECTED',
-            'CONTROL_AUDIO',
-            'CONTROL_DISPLAY',
-            'CONTROL_INPUT_JOYSTICK',
-            'CONTROL_MOUSE_AND_KEYBOARD',
-            'CONTROL_POWER',
-            'READ_INSTALLED_APPS',
-            'READ_LGE_SDX',
-            'READ_NOTIFICATIONS',
-            'SEARCH',
-            'WRITE_SETTINGS',
-            'WRITE_NOTIFICATION_ALERT',
-            'READ_CURRENT_CHANNEL',
-            'READ_RUNNING_APPS',
-            'READ_UPDATE_INFO',
-            'UPDATE_FROM_REMOTE_APP',
-            'READ_LGE_TV_INPUT_EVENTS',
-            'READ_TV_CURRENT_TIME',
+            'LAUNCH', 'LAUNCH_WEBAPP', 'APP_TO_APP', 'CLOSE', 'TEST_OPEN',
+            'TEST_PROTECTED', 'CONTROL_AUDIO', 'CONTROL_DISPLAY',
+            'CONTROL_INPUT_JOYSTICK', 'CONTROL_MOUSE_AND_KEYBOARD',
+            'CONTROL_POWER', 'READ_INSTALLED_APPS', 'READ_LGE_SDX',
+            'READ_NOTIFICATIONS', 'SEARCH', 'WRITE_SETTINGS',
+            'WRITE_NOTIFICATION_ALERT', 'READ_CURRENT_CHANNEL',
+            'READ_RUNNING_APPS', 'READ_UPDATE_INFO', 'UPDATE_FROM_REMOTE_APP',
+            'READ_LGE_TV_INPUT_EVENTS', 'READ_TV_CURRENT_TIME',
           ],
           'signatures': [
             {
@@ -180,14 +221,14 @@ class LgProtocol implements TvProtocol {
         },
       },
     };
+    AppLogger.v(_tag, 'TX register → ws://$ip:$port (id=register_0)');
     _channel!.sink.add(jsonEncode(msg));
   }
 
-  /// Sends an SSAP request and returns the TV's response payload.
   Future<Map<String, dynamic>> _request(
-      String uri, {
-        Map<String, dynamic>? payload,
-      }) {
+    String uri, {
+    Map<String, dynamic>? payload,
+  }) {
     final id = '${++_msgId}';
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
@@ -198,34 +239,53 @@ class LgProtocol implements TvProtocol {
       'uri': uri,
       if (payload != null) 'payload': payload,
     };
+    AppLogger.v(_tag, 'TX request id=$id uri=$uri payload=$payload '
+        '(pending=${_pending.length})');
     _channel!.sink.add(jsonEncode(msg));
 
     return completer.future.timeout(
       const Duration(seconds: 5),
       onTimeout: () {
         _pending.remove(id);
+        AppLogger.e(_tag, 'request id=$id uri=$uri timed out (5s)');
         throw TvProtocolException('LG: request $uri timed out');
       },
     );
   }
 
   void _onMessage(dynamic raw) {
+    if (_socketOpenCompleter?.isCompleted == false) {
+      AppLogger.d(_tag, 'RX: first message received — WebSocket confirmed open');
+      _socketOpenCompleter!.complete();
+    }
+
     try {
       final map = jsonDecode(raw as String) as Map<String, dynamic>;
       final type    = map['type'] as String?;
       final id      = map['id'] as String?;
       final payload = map['payload'] as Map<String, dynamic>? ?? {};
 
+      AppLogger.v(_tag, 'RX type=$type id=$id '
+          'payload=${_truncate(payload.toString(), 120)}');
+
       if (type == 'registered') {
-        // Pairing accepted — save the client key for future sessions.
         final key = payload['client-key'] as String?;
         if (key != null && key.isNotEmpty) {
+          final isNew = _clientKey != key;
           _clientKey = key;
+          if (isNew) {
+            AppLogger.i(_tag, 'received new client-key — persisting to SharedPreferences');
+          } else {
+            AppLogger.d(_tag, 'received same client-key as cached — no update needed');
+          }
           SharedPreferences.getInstance().then(
-                (p) => p.setString('$_prefKeyPrefix$ip', key),
+            (p) => p.setString('$_prefKeyPrefix$ip', key),
           );
+        } else {
+          AppLogger.w(_tag, 'registered event had no client-key in payload');
         }
         _connected = true;
+        AppLogger.i(_tag, 'registered: _connected=true, clientKey=${_clientKey != null}');
         if (_connectCompleter?.isCompleted == false) {
           _connectCompleter!.complete();
         }
@@ -234,24 +294,37 @@ class LgProtocol implements TvProtocol {
 
       if (type == 'response' && id != null) {
         final completer = _pending.remove(id);
-        completer?.complete(payload);
+        if (completer != null) {
+          AppLogger.v(_tag, 'RX response id=$id → resolving pending request');
+          completer.complete(payload);
+        } else {
+          AppLogger.w(_tag, 'RX response id=$id but no pending completer found');
+        }
+        return;
       }
 
       if (type == 'error' && id != null) {
         final completer = _pending.remove(id);
         final errMsg = payload['message'] as String? ?? 'Unknown error';
+        AppLogger.w(_tag, 'RX error id=$id message="$errMsg"');
         completer?.completeError(TvProtocolException('LG error: $errMsg'));
+        return;
       }
-    } catch (e) {
-      debugPrint('LgProtocol: parse error — $e');
+
+      if (type == 'hello') {
+        AppLogger.d(_tag, 'RX hello from TV (connection acknowledged)');
+        return;
+      }
+
+      AppLogger.v(_tag, 'RX unhandled type=$type id=$id');
+    } catch (e, st) {
+      AppLogger.e(_tag, 'parse error: $e\n$st');
     }
   }
 
-  // LG SSAP URI map.
-  // Source: https://github.com/hobbyquaker/lgtv2 + openHAB lgwebos binding.
-  // Navigation (up/down/left/right/ok/back) use the input socket API.
-  // ssap://com.webos.service.networkinput/getPointerInputSocket opens a
-  // secondary WebSocket for cursor events — used here via button URI workaround.
+  String _truncate(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max)}…';
+
   static const Map<RemoteCommand, Map<String, dynamic>> _commandMap = {
     RemoteCommand.power:       {'uri': 'ssap://system/turnOff'},
     RemoteCommand.powerOff:    {'uri': 'ssap://system/turnOff'},
@@ -266,9 +339,6 @@ class LgProtocol implements TvProtocol {
     RemoteCommand.rewind:      {'uri': 'ssap://media.controls/rewind'},
     RemoteCommand.fastForward: {'uri': 'ssap://media.controls/fastForward'},
     RemoteCommand.source:      {'uri': 'ssap://tv/getExternalInputList'},
-
-    // Navigation — ssap://com.webos.service.ime/sendKeyboardEvent with keyCode
-    // Confirmed keyCodes from Home Assistant webostv integration source.
     RemoteCommand.up:    {'uri': 'ssap://com.webos.service.ime/sendKeyboardEvent', 'payload': {'keyCode': 38}},
     RemoteCommand.down:  {'uri': 'ssap://com.webos.service.ime/sendKeyboardEvent', 'payload': {'keyCode': 40}},
     RemoteCommand.left:  {'uri': 'ssap://com.webos.service.ime/sendKeyboardEvent', 'payload': {'keyCode': 37}},
@@ -276,8 +346,6 @@ class LgProtocol implements TvProtocol {
     RemoteCommand.ok:    {'uri': 'ssap://com.webos.service.ime/sendKeyboardEvent', 'payload': {'keyCode': 13}},
     RemoteCommand.back:  {'uri': 'ssap://com.webos.service.ime/sendKeyboardEvent', 'payload': {'keyCode': 461}},
     RemoteCommand.menu:  {'uri': 'ssap://com.webos.service.ime/sendKeyboardEvent', 'payload': {'keyCode': 1003}},
-
-    // App launchers
     RemoteCommand.home:    {'uri': 'ssap://system.launcher/launch', 'payload': {'id': 'com.webos.app.home'}},
     RemoteCommand.netflix: {'uri': 'ssap://system.launcher/launch', 'payload': {'id': 'netflix'}},
     RemoteCommand.youtube: {'uri': 'ssap://system.launcher/launch', 'payload': {'id': 'youtube.leanback.v4'}},

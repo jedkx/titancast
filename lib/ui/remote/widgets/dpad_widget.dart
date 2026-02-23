@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:titancast/remote/remote_command.dart';
 import 'package:titancast/ui/remote/widgets/remote_button.dart';
 
@@ -56,7 +57,7 @@ class DPadWidget extends StatelessWidget {
                 child: RemoteButton.circle(
                   size: 76,
                   color: purpleAccent,
-                  onTap: () => onCommand(RemoteCommand.ok),
+                  onTap: () { HapticFeedback.mediumImpact(); onCommand(RemoteCommand.ok); },
                   child: Container(
                     width: 20,
                     height: 20,
@@ -111,7 +112,7 @@ class _DirBtn extends StatelessWidget {
       color: Colors.transparent,
       isFlat: true,
       border: Border.all(color: Colors.transparent),
-      onTap: onTap,
+      onTap: () { HapticFeedback.lightImpact(); onTap(); },
       child: Icon(icon, size: 36, color: const Color(0xFF8A8A93)),
     );
   }

@@ -1,10 +1,10 @@
-import '../remote/brand_detector.dart';
+import '../remote/tv_brand.dart';
 
 enum DiscoveryMode { network, manualIp, qrScan }
 
 enum DiscoveryMethod { ssdp, mdns, networkProbe, manualIp, qr }
 
-enum DeviceType { tv, speaker, other }
+enum DeviceType { tv, speaker, modem, other }
 
 class DiscoveredDevice {
   final String ip;
@@ -46,7 +46,30 @@ class DiscoveredDevice {
   DeviceType get deviceType {
     final type = (serviceType ?? '').toLowerCase();
     final name = friendlyName.toLowerCase();
+    final mfr  = (manufacturer ?? '').toLowerCase();
 
+    // ── Modem / Router / Gateway detection ──────────────────────────────────
+    // Eliminates false positives like "Archer C6", "Internet Home Gateway Device"
+    if (type.contains('internetgateway') ||
+        type.contains('gateway') ||
+        type.contains('wandevice') ||
+        name.contains('router') ||
+        name.contains('gateway') ||
+        name.contains('modem') ||
+        name.contains('archer') ||
+        name.contains('dsl') ||
+        name.contains('wifi router') ||
+        name.contains('wi-fi router') ||
+        mfr == 'tp-link' ||
+        mfr == 'zte' ||
+        mfr == 'huawei' ||
+        mfr == 'arris' ||
+        mfr == 'technicolor' ||
+        mfr == 'sagemcom' ||
+        mfr == 'nokia' && type.contains('gateway')) {
+      return DeviceType.modem;
+    }
+    // ── TV detection ─────────────────────────────────────────────────────────
     if (type.contains('tv') ||
         type.contains('renderer') ||
         type.contains('dial') ||
@@ -57,6 +80,7 @@ class DiscoveredDevice {
         name.contains('fire')) {
       return DeviceType.tv;
     }
+    // ── Speaker detection ────────────────────────────────────────────────────
     if (type.contains('audio') ||
         type.contains('speaker') ||
         name.contains('speaker') ||
@@ -67,6 +91,10 @@ class DiscoveredDevice {
     }
     return DeviceType.other;
   }
+
+  /// True if this device should be shown in the device list.
+  /// Modems/routers are hidden by default since they can't be controlled.
+  bool get isControllable => deviceType != DeviceType.modem;
 
   DiscoveredDevice copyWith({
     String? ip,

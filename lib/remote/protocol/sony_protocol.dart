@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:titancast/core/app_logger.dart';
 import 'package:titancast/remote/remote_command.dart';
 import 'package:titancast/remote/protocol/tv_protocol.dart';
+
+const _tag = 'SonyProtocol';
 
 /// Controls Sony Bravia TVs (2013+) via the IRCC-IP over HTTP protocol.
 ///
@@ -16,8 +19,6 @@ import 'package:titancast/remote/protocol/tv_protocol.dart';
 ///   - https://gist.github.com/kalleth/e10e8f3b8b7cb1bac21463b0073a65fb
 class SonyProtocol implements TvProtocol {
   final String ip;
-
-  /// Pre-Shared Key configured on the TV under Settings > Network > IP Control.
   final String psk;
 
   bool _connected = false;
@@ -25,46 +26,88 @@ class SonyProtocol implements TvProtocol {
 
   SonyProtocol({required this.ip, this.psk = ''});
 
+  @override
+  bool get isConnected => _connected;
+
   // ---------------------------------------------------------------------------
   // TvProtocol
   // ---------------------------------------------------------------------------
 
   @override
-  bool get isConnected => _connected;
-
-  @override
   Future<void> connect() async {
-    // Sony uses stateless HTTP — "connect" just validates reachability.
+    AppLogger.i(_tag, '── connect() start ─────────────────────────────');
+    AppLogger.d(_tag, 'ip=$ip psk=${psk.isNotEmpty ? "set (${psk.length} chars)" : "not set"}');
+
+    final url = Uri.http(ip, '/sony/system');
+    AppLogger.d(_tag, 'verifying device reachability: POST $url');
+    AppLogger.d(_tag, 'method=getSystemInformation headers=${_headers.keys.join(", ")}');
+
+    final sw = Stopwatch()..start();
     try {
-      final url = Uri.http(ip, '/sony/system');
       final response = await _client
           .post(
-        url,
-        headers: _headers,
-        body: '{"method":"getSystemInformation","id":1,"params":[],"version":"1.0"}',
-      )
+            url,
+            headers: _headers,
+            body: '{"method":"getSystemInformation","id":1,"params":[],"version":"1.0"}',
+          )
           .timeout(const Duration(seconds: 5));
+      sw.stop();
 
-      if (response.statusCode == 200 || response.statusCode == 401) {
-        // 401 = reachable but PSK wrong; still treat as connected so user sees key error later.
+      AppLogger.d(_tag, 'response: HTTP ${response.statusCode} in ${sw.elapsedMilliseconds}ms '
+          'body="${_truncate(response.body, 120)}"');
+
+      if (response.statusCode == 401) {
         _connected = true;
-      } else {
-        throw TvProtocolException('Sony: HTTP ${response.statusCode}');
+        AppLogger.w(_tag, 'HTTP 401 — PSK is wrong or not set, but device is reachable. '
+            'connected=true (commands will likely fail until PSK is configured)');
+        return;
       }
+
+      if (response.statusCode == 200) {
+        final body = response.body;
+        final hasSonySignature = body.contains('"result"') ||
+            body.contains('"product"') ||
+            body.contains('"model"');
+        AppLogger.d(_tag, 'verifying Sony signature in response: '
+            'hasSonySignature=$hasSonySignature');
+
+        if (!hasSonySignature) {
+          AppLogger.e(_tag, 'response does not look like a Sony Bravia — '
+              'missing "result"/"product"/"model" fields');
+          throw const TvProtocolException(
+            'Sony: Bu cihaz Sony Bravia değil — beklenen JSON yanıtı alınamadı.',
+          );
+        }
+        _connected = true;
+        AppLogger.i(_tag, 'connected to Sony Bravia at $ip in ${sw.elapsedMilliseconds}ms');
+        return;
+      }
+
+      AppLogger.e(_tag, 'unexpected HTTP ${response.statusCode} from $ip');
+      throw TvProtocolException('Sony: HTTP ${response.statusCode}');
+    } on TvProtocolException {
+      rethrow;
     } on Exception catch (e) {
+      sw.stop();
+      AppLogger.e(_tag, 'connect() exception after ${sw.elapsedMilliseconds}ms: $e');
       throw TvProtocolException('Sony: $e');
     }
   }
 
   @override
   Future<void> sendCommand(RemoteCommand command) async {
-    if (!_connected) throw TvProtocolException('Not connected');
+    if (!_connected) {
+      AppLogger.w(_tag, 'sendCommand($command) called while disconnected');
+      throw TvProtocolException('Not connected');
+    }
 
     final code = _irccMap[command];
     if (code == null) {
-      debugPrint('SonyProtocol: no IRCC code for $command');
+      AppLogger.w(_tag, 'sendCommand: no IRCC code mapped for $command — dropped');
       return;
     }
+
+    AppLogger.d(_tag, '→ sendCommand($command): IRCC code=$code');
 
     final body = '''<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
@@ -77,23 +120,40 @@ class SonyProtocol implements TvProtocol {
 </s:Envelope>''';
 
     final url = Uri.http(ip, '/sony/IRCC');
+    AppLogger.v(_tag, 'POST $url (SOAP X_SendIRCC, psk=${psk.isNotEmpty})');
+
+    final sw = Stopwatch()..start();
     try {
       final response = await _client
           .post(url, headers: _soapHeaders, body: body)
           .timeout(const Duration(seconds: 5));
+      sw.stop();
+
+      AppLogger.d(_tag, '← sendCommand($command): HTTP ${response.statusCode} '
+          'in ${sw.elapsedMilliseconds}ms');
 
       if (response.statusCode != 200) {
-        throw TvProtocolException('Sony IRCC error: HTTP ${response.statusCode}');
+        AppLogger.e(_tag, 'sendCommand($command) failed: HTTP ${response.statusCode} '
+            'body="${_truncate(response.body, 80)}"');
+        throw TvProtocolException(
+            'Sony IRCC error: HTTP ${response.statusCode}');
       }
+      AppLogger.v(_tag, '← sendCommand($command) OK');
+    } on TvProtocolException {
+      rethrow;
     } on Exception catch (e) {
+      sw.stop();
+      AppLogger.e(_tag, 'sendCommand($command) exception after ${sw.elapsedMilliseconds}ms: $e');
       throw TvProtocolException('Sony: $e');
     }
   }
 
   @override
   Future<void> disconnect() async {
+    AppLogger.i(_tag, 'disconnect(): closing HTTP client');
     _connected = false;
     _client.close();
+    AppLogger.i(_tag, 'disconnect(): done');
   }
 
   // ---------------------------------------------------------------------------
@@ -111,8 +171,9 @@ class SonyProtocol implements TvProtocol {
     if (psk.isNotEmpty) 'X-Auth-PSK': psk,
   };
 
-  // IRCC base64 codes confirmed from Sony Bravia professional display docs
-  // and community captures (sonybravia-api, Home Assistant sony_bravia).
+  String _truncate(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max)}…';
+
   static const Map<RemoteCommand, String> _irccMap = {
     RemoteCommand.power:       'AAAAAQAAAAEAAAAvAw==',
     RemoteCommand.powerOn:     'AAAAAQAAAAEAAAA6Aw==',
@@ -139,7 +200,7 @@ class SonyProtocol implements TvProtocol {
     RemoteCommand.netflix:     'AAAAAgAAABoAAAB8Aw==',
     RemoteCommand.key0:        'AAAAAQAAAAEAAAAJAw==',
     RemoteCommand.key1:        'AAAAAQAAAAEAAAAuAw==',
-    RemoteCommand.key2:        'AAAAAQAAAAEAAAAvAw==', // note: same as power on some models
+    RemoteCommand.key2:        'AAAAAQAAAAEAAAAvAw==',
     RemoteCommand.key3:        'AAAAAQAAAAEAAAAwAw==',
     RemoteCommand.key4:        'AAAAAQAAAAEAAAAxAw==',
     RemoteCommand.key5:        'AAAAAQAAAAEAAAAyAw==',

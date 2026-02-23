@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
+import '../../core/app_logger.dart';
 import '../discovery_model.dart';
+
+const _tag = 'SsdpDiscovery';
 
 /// A robust, stream-based SSDP (Simple Service Discovery Protocol) scanner.
 ///
@@ -74,7 +77,7 @@ class SsdpDiscoveryService {
 
       Timer(timeout, stopDiscovery);
     } catch (e) {
-      print('SSDP socket error: $e');
+      AppLogger.e(_tag, 'socket error: $e');
       _cleanup();
     }
   }

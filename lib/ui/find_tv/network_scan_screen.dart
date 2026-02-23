@@ -28,7 +28,7 @@ class _NetworkScanScreenState extends State<NetworkScanScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat;
+    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.5).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeOutCubic),
     );

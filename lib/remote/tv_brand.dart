@@ -1,0 +1,18 @@
+enum TvBrand {
+  samsung,
+  lg,
+  sony,
+  philips,
+  hisense,
+  tcl,
+  panasonic,
+  sharp,
+  toshiba,
+  google,
+  amazon,
+  apple,
+  roku,
+  torima,
+  androidTv,
+  unknown,
+}

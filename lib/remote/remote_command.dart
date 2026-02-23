@@ -39,6 +39,30 @@ enum RemoteCommand {
   netflix,
   youtube,
 
+  // Color / teletext keys (Philips, Android TV)
+  colorRed,
+  colorGreen,
+  colorYellow,
+  colorBlue,
+
+  // Info / Guide / Subtitle
+  info,
+  guide,
+  subtitle,
+  teletext,
+
+  // Extended media
+  record,
+  nextTrack,
+  prevTrack,
+
+  // Navigation extras
+  exit,
+  tv,
+
+  // Philips-specific
+  ambilight,
+
   // Number keys
   key0,
   key1,

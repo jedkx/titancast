@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:titancast/data/active_device.dart';
+import 'package:titancast/remote/remote_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../data/device_repository.dart';
@@ -26,7 +27,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
   bool _isLoading           = false;
   String? _wifiSsid;
   DeviceType? _activeFilter;
-  String? _connectedIp;
+  String? _connectedIp;        // seçili cihaz IP'si
+  RemoteConnectionState _connectionState = RemoteConnectionState.disconnected;
 
   final List<DiscoveredDevice> _updateBuffer = [];
   Timer? _throttleTimer;
@@ -35,6 +37,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
   void initState() {
     super.initState();
     _init();
+    activeConnectionStateNotifier.addListener(_onConnectionStateChanged);
+  }
+
+  void _onConnectionStateChanged() {
+    if (!mounted) return;
+    setState(() => _connectionState = activeConnectionStateNotifier.value);
   }
 
   Future<void> _init() async {
@@ -77,8 +85,26 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   void _connectToDevice(DiscoveredDevice device) {
-    setState(() => _connectedIp = device.ip);
+    if (_connectedIp == device.ip) {
+      // Tapping the already-connected device → disconnect
+      _disconnectDevice();
+      return;
+    }
+    setState(() {
+      _connectedIp     = device.ip;
+      _connectionState = RemoteConnectionState.connecting;
+    });
     activeDeviceNotifier.value = device;
+  }
+
+  void _disconnectDevice() {
+    setState(() {
+      _connectedIp     = null;
+      _connectionState = RemoteConnectionState.disconnected;
+    });
+    // Setting notifier to null signals RemoteScreen to detach its controller.
+    activeDeviceNotifier.value = null;
+    activeConnectionStateNotifier.value = RemoteConnectionState.disconnected;
   }
 
   Future<void> _openFindDevice() async {
@@ -121,13 +147,19 @@ class _DevicesScreenState extends State<DevicesScreen> {
   bool _isPlaceholder(String name) => name.startsWith('Identifying') || name.contains('...');
 
   void _showDeviceMenu(DiscoveredDevice device) {
+    final isConnected = _connectedIp == device.ip;
     DeviceMenuSheet.show(
       context: context,
       device: device,
+      isConnected: isConnected,
       onConnect: () {
         Navigator.pop(context);
         _connectToDevice(device);
       },
+      onDisconnect: isConnected ? () {
+        Navigator.pop(context);
+        _disconnectDevice();
+      } : null,
       onRename: () {
         Navigator.pop(context);
         _showRenameDialog(device);
@@ -137,6 +169,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
         if (_connectedIp == device.ip) setState(() => _connectedIp = null);
         await _repo.delete(device.ip);
         if (mounted) setState(() => _groupedList = _buildFilteredList());
+      },
+      onSetBrand: (brand) async {
+        await _repo.setBrand(device.ip, brand);
+        if (mounted) setState(() => _groupedList = _buildFilteredList());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${device.displayName} → ${DeviceMenuSheet.brandLabel(brand)}'),
+            backgroundColor: const Color(0xFF8B5CF6),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
       },
     );
   }
@@ -188,6 +231,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   void dispose() {
     _throttleTimer?.cancel();
     _discoveryManager.stopDiscovery();
+    activeConnectionStateNotifier.removeListener(_onConnectionStateChanged);
     super.dispose();
   }
 
@@ -349,9 +393,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   final item = _groupedList[index];
                   if (item is SsidHeader) return _SectionHeader(ssid: item.ssid);
                   final device = item as DiscoveredDevice;
+                  final isSelected = _connectedIp == device.ip;
                   return DeviceListItem(
                     device: device,
-                    isConnected: _connectedIp == device.ip,
+                    isSelected: isSelected,
+                    connectionState: isSelected
+                        ? _connectionState
+                        : RemoteConnectionState.disconnected,
                     onTap: () => _connectToDevice(device),
                     onLongPress: () => _showDeviceMenu(device),
                   );

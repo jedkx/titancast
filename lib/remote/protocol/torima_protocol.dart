@@ -1,11 +1,13 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_adb/adb_connection.dart';
 import 'package:flutter_adb/adb_crypto.dart';
 import 'package:flutter_adb/flutter_adb.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:titancast/core/app_logger.dart';
 import 'package:titancast/remote/remote_command.dart';
 import 'package:titancast/remote/protocol/tv_protocol.dart';
+
+const _tag = 'TorimaProtocol';
 
 /// Controls Android-based projectors (Torima HY300/HY320/HY350/T11, etc.)
 /// via ADB over WiFi (Android Debug Bridge, TCP port 5555).
@@ -17,10 +19,6 @@ import 'package:titancast/remote/protocol/tv_protocol.dart';
 ///   1. Settings → About → tap "Build Number" 7 times.
 ///   2. Developer Options → USB Debugging ON.
 ///   3. Developer Options → ADB over Network ON (if listed).
-///
-/// References:
-///   - flutter_adb: https://pub.dev/packages/flutter_adb
-///   - Android KEYCODE table: https://developer.android.com/reference/android/view/KeyEvent
 class TorimaProtocol implements TvProtocol {
   final String ip;
   final int port;
@@ -38,117 +36,137 @@ class TorimaProtocol implements TvProtocol {
 
   @override
   Future<void> connect() async {
+    AppLogger.i(_tag, '── connect() start ─────────────────────────────');
+    AppLogger.d(_tag, 'target=$ip:$port');
+
     if (kIsWeb) {
-      throw const TvProtocolException(
-        'ADB over WiFi is not supported on web.',
-      );
+      AppLogger.e(_tag, 'ADB over WiFi is not supported on web — aborting');
+      throw const TvProtocolException('ADB over WiFi is not supported on web.');
     }
 
     final prefs          = await SharedPreferences.getInstance();
     final key            = '$_prefKeyPrefix$ip';
     final everAuthorised = prefs.getBool(key) ?? false;
+    AppLogger.d(_tag, 'everAuthorised=$everAuthorised (key=$key)');
 
+    AppLogger.d(_tag, 'creating AdbCrypto and AdbConnection');
     _crypto     = AdbCrypto();
     _connection = AdbConnection(ip, port, _crypto!);
 
+    AppLogger.d(_tag, 'calling AdbConnection.connect() (timeout=15s) — '
+        '${everAuthorised ? "previously authorized" : "first time, projector will show approval dialog"}');
+
     bool ok = false;
+    final sw = Stopwatch()..start();
     try {
       ok = await _connection!.connect().timeout(const Duration(seconds: 15));
     } catch (e) {
+      sw.stop();
+      AppLogger.e(_tag, 'AdbConnection.connect() threw after ${sw.elapsedMilliseconds}ms: $e');
       throw TvProtocolException('Torima: $e');
     }
+    sw.stop();
+    AppLogger.d(_tag, 'AdbConnection.connect() returned ok=$ok in ${sw.elapsedMilliseconds}ms');
 
     if (!ok) {
-      throw TvProtocolException(
-        everAuthorised
-            ? 'Torima: Bağlantı kurulamadı. USB hata ayıklamanın açık olduğunu kontrol edin.'
-            : 'Torima: Projeksiyon ekranında "İzin ver" tuşuna basın, ardından tekrar deneyin.',
-      );
+      final msg = everAuthorised
+          ? 'Torima: Bağlantı kurulamadı. USB hata ayıklamanın açık olduğunu kontrol edin.'
+          : 'Torima: Projeksiyon ekranında "İzin ver" tuşuna basın, ardından tekrar deneyin.';
+      AppLogger.e(_tag, 'connect failed (ok=false, everAuthorised=$everAuthorised): $msg');
+      throw TvProtocolException(msg);
     }
 
     await prefs.setBool(key, true);
     _connected = true;
+    AppLogger.i(_tag, 'connected to $ip:$port via ADB in ${sw.elapsedMilliseconds}ms');
   }
 
   @override
   Future<void> sendCommand(RemoteCommand command) async {
     if (!_connected || _crypto == null) {
+      AppLogger.w(_tag, 'sendCommand($command) called while disconnected');
       throw const TvProtocolException('Not connected');
     }
 
-    // App-launch commands use am start instead of keyevent.
     final appTarget = _appMap[command];
     if (appTarget != null) {
-      await _shell(
-        'am start -a android.intent.action.MAIN '
-            '-c android.intent.category.LAUNCHER '
-            '-n $appTarget',
-      );
+      final cmd = 'am start -a android.intent.action.MAIN '
+          '-c android.intent.category.LAUNCHER -n $appTarget';
+      AppLogger.d(_tag, '→ sendCommand($command): launching app → $appTarget');
+      AppLogger.v(_tag, 'shell: $cmd');
+      await _shell(cmd);
+      AppLogger.v(_tag, '← sendCommand($command) app launch OK');
       return;
     }
 
     final keycode = _keycodeMap[command];
     if (keycode == null) {
-      debugPrint('TorimaProtocol: no keycode for $command');
+      AppLogger.w(_tag, 'sendCommand: no keycode mapped for $command — dropped');
       return;
     }
 
-    await _shell('input keyevent $keycode');
+    final cmd = 'input keyevent $keycode';
+    AppLogger.d(_tag, '→ sendCommand($command): keyevent $keycode');
+    AppLogger.v(_tag, 'shell: $cmd');
+    await _shell(cmd);
+    AppLogger.v(_tag, '← sendCommand($command) OK');
   }
 
   @override
   Future<void> disconnect() async {
+    AppLogger.i(_tag, 'disconnect(): nulling connection and crypto');
     _connected  = false;
     _connection = null;
     _crypto     = null;
+    AppLogger.i(_tag, 'disconnect(): done');
   }
 
   // ---------------------------------------------------------------------------
 
-  Future<void> _shell(String command) async {
+  Future<void> _shell(String cmd) async {
+    AppLogger.v(_tag, 'ADB shell → "$cmd"');
+    final sw = Stopwatch()..start();
     try {
-      await Adb.sendSingleCommand(
-        command,
-        ip: ip,
-        port: port,
-        crypto: _crypto!,
-      );
+      await Adb.sendSingleCommand(cmd, ip: ip, port: port, crypto: _crypto!);
+      sw.stop();
+      AppLogger.v(_tag, 'ADB shell ← OK in ${sw.elapsedMilliseconds}ms');
     } catch (e) {
+      sw.stop();
       _connected = false;
+      AppLogger.e(_tag, 'ADB shell error after ${sw.elapsedMilliseconds}ms: $e '
+          '(cmd="$cmd") — marking disconnected');
       throw TvProtocolException('Torima shell error: $e');
     }
   }
 
-  // App package/activity paths (standard Android TV app manifests)
   static const Map<RemoteCommand, String> _appMap = {
     RemoteCommand.netflix: 'com.netflix.ninja/.MainActivity',
     RemoteCommand.youtube: 'com.google.android.youtube/.HomeActivity',
   };
 
-  // Android KEYCODE integers — https://developer.android.com/reference/android/view/KeyEvent
   static const Map<RemoteCommand, int> _keycodeMap = {
-    RemoteCommand.power:       26,   // KEYCODE_POWER
+    RemoteCommand.power:       26,
     RemoteCommand.powerOn:     26,
     RemoteCommand.powerOff:    26,
-    RemoteCommand.volumeUp:    24,   // KEYCODE_VOLUME_UP
-    RemoteCommand.volumeDown:  25,   // KEYCODE_VOLUME_DOWN
-    RemoteCommand.mute:        164,  // KEYCODE_VOLUME_MUTE
-    RemoteCommand.channelUp:   166,  // KEYCODE_CHANNEL_UP
-    RemoteCommand.channelDown: 167,  // KEYCODE_CHANNEL_DOWN
-    RemoteCommand.up:          19,   // KEYCODE_DPAD_UP
-    RemoteCommand.down:        20,   // KEYCODE_DPAD_DOWN
-    RemoteCommand.left:        21,   // KEYCODE_DPAD_LEFT
-    RemoteCommand.right:       22,   // KEYCODE_DPAD_RIGHT
-    RemoteCommand.ok:          23,   // KEYCODE_DPAD_CENTER
-    RemoteCommand.back:        4,    // KEYCODE_BACK
-    RemoteCommand.home:        3,    // KEYCODE_HOME
-    RemoteCommand.menu:        82,   // KEYCODE_MENU
-    RemoteCommand.play:        126,  // KEYCODE_MEDIA_PLAY
-    RemoteCommand.pause:       127,  // KEYCODE_MEDIA_PAUSE
-    RemoteCommand.stop:        86,   // KEYCODE_MEDIA_STOP
-    RemoteCommand.rewind:      89,   // KEYCODE_MEDIA_REWIND
-    RemoteCommand.fastForward: 90,   // KEYCODE_MEDIA_FAST_FORWARD
-    RemoteCommand.source:      178,  // KEYCODE_TV_INPUT
+    RemoteCommand.volumeUp:    24,
+    RemoteCommand.volumeDown:  25,
+    RemoteCommand.mute:        164,
+    RemoteCommand.channelUp:   166,
+    RemoteCommand.channelDown: 167,
+    RemoteCommand.up:          19,
+    RemoteCommand.down:        20,
+    RemoteCommand.left:        21,
+    RemoteCommand.right:       22,
+    RemoteCommand.ok:          23,
+    RemoteCommand.back:        4,
+    RemoteCommand.home:        3,
+    RemoteCommand.menu:        82,
+    RemoteCommand.play:        126,
+    RemoteCommand.pause:       127,
+    RemoteCommand.stop:        86,
+    RemoteCommand.rewind:      89,
+    RemoteCommand.fastForward: 90,
+    RemoteCommand.source:      178,
     RemoteCommand.key0:        7,
     RemoteCommand.key1:        8,
     RemoteCommand.key2:        9,
