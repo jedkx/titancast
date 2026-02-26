@@ -122,6 +122,14 @@ class SamsungProtocol implements TvProtocol {
   }
 
   @override
+  Future<void> sendText(String text) async {
+    // Samsung Tizen WS API does not expose a direct text-input endpoint.
+    // Text entry requires Tizen REST API (port 8002) which is outside the
+    // scope of the current WS-only driver. Silently drop the call.
+    AppLogger.w(_tag, 'sendText: not supported by Samsung WS protocol — dropped');
+  }
+
+  @override
   Future<void> disconnect() async {
     AppLogger.i(_tag, 'disconnect(): closing WebSocket');
     _connected = false;

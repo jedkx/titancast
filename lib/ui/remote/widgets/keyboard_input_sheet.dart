@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:titancast/core/app_logger.dart';
 
 const _tag = 'KeyboardInputSheet';
@@ -38,8 +37,6 @@ class _KeyboardInputSheetState extends State<KeyboardInputSheet>
   // Whether a send is currently in flight.
   bool _sending = false;
 
-  // (voice input removed from keyboard sheet — mic is on main remote)
-
   @override
   void initState() {
     super.initState();
@@ -69,7 +66,6 @@ class _KeyboardInputSheetState extends State<KeyboardInputSheet>
       _sentLength = text.length;
 
       if (mounted) setState(() => _sending = true);
-      HapticFeedback.selectionClick();
 
       try {
         await widget.onSend(delta);

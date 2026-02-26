@@ -24,7 +24,7 @@ class DeviceListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final visuals = _resolveVisuals(device.deviceType);
 
-    // Border rengi gerçek bağlantı durumuna göre belirleniyor.
+    // Border rengi gercek baglanti durumuna gore belirleniyor.
     final borderColor = switch (connectionState) {
       RemoteConnectionState.connected   => const Color(0xFF10B981),
       RemoteConnectionState.connecting  => const Color(0xFF8B5CF6),
@@ -85,8 +85,8 @@ class DeviceListItem extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              // Seçili değilse normal brand/method chip göster.
-              // Seçiliyse gerçek bağlantı durumunu badge olarak göster.
+              // Secili degilse normal brand/method chip goster.
+              // Seciliyse gercek baglanti durumunu badge olarak goster.
               if (!isSelected)
                 _BrandOrMethodChip(device: device)
               else
@@ -110,7 +110,7 @@ class DeviceListItem extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Gerçek bağlantı durumu badge'i
+// Gercek baglanti durumu badge'i
 // ---------------------------------------------------------------------------
 
 class _ConnectionBadge extends StatelessWidget {
@@ -188,7 +188,7 @@ class _ConnectionBadge extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Orijinal chip'ler (seçili olmayan cihazlar için)
+// Orijinal chip'ler (secili olmayan cihazlar icin)
 // ---------------------------------------------------------------------------
 
 class _BrandOrMethodChip extends StatelessWidget {

@@ -75,8 +75,8 @@ class AndroidTvProtocol implements TvProtocol {
 
     if (!ok) {
       final msg = everOk
-          ? 'Android TV: Bağlantı kurulamadı. TV\'de USB Hata Ayıklama\'nın açık olduğunu kontrol edin.'
-          : 'Android TV: TV ekranında "Her Zaman İzin Ver" seçeneğine basın, ardından tekrar bağlanmayı deneyin.';
+          ? 'Android TV: Connection failed. Ensure USB Debugging is enabled on the TV.'
+          : 'Android TV: Accept the "Always allow" dialog on the TV screen, then reconnect.';
       AppLogger.e(_tag, 'connect failed (ok=false, everOk=$everOk): $msg');
       throw TvProtocolException(msg);
     }
@@ -118,6 +118,20 @@ class AndroidTvProtocol implements TvProtocol {
   }
 
   @override
+  Future<void> sendText(String text) async {
+    if (!_connected || _crypto == null) {
+      AppLogger.w(_tag, 'sendText() called while disconnected');
+      throw const TvProtocolException('Not connected');
+    }
+    // Escape shell-unsafe characters before injecting via `input text`.
+    // ADB interprets single-quoted strings; internal single-quotes must be escaped.
+    final escaped = text.replaceAll("'", "'\\''")
+        .replaceAll(' ', '%s'); // ADB input text uses %s for spaces
+    AppLogger.d(_tag, 'sendText: "${text.substring(0, text.length.clamp(0, 40))}"');
+    await _shell("input text '$escaped'");
+  }
+
+  @override
   Future<void> disconnect() async {
     AppLogger.i(_tag, 'disconnect(): nulling connection and crypto');
     _connected  = false;
@@ -149,6 +163,14 @@ class AndroidTvProtocol implements TvProtocol {
   static const Map<RemoteCommand, String> _appMap = {
     RemoteCommand.netflix: 'com.netflix.ninja/.MainActivity',
     RemoteCommand.youtube: 'com.google.android.youtube.tv/.browse.TVBrowseActivity',
+    // Spotify — package name confirmed via Play Store listing
+    RemoteCommand.spotify: 'com.spotify.tv.android/.SpotifyTVActivity',
+    // Amazon Prime Video
+    RemoteCommand.prime:   'com.amazon.amazonvideo.livingroom/.ui.activity.IntroActivity',
+    // Disney+
+    RemoteCommand.disney:  'com.disney.disneyplus/.MainActivity',
+    // Twitch
+    RemoteCommand.twitch:  'tv.twitch.android.app/.TwitchApplication',
   };
 
   static const Map<RemoteCommand, int> _keycodeMap = {

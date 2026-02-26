@@ -281,7 +281,7 @@ class IpDiscoveryService {
     final prefix = '%1$command=';
     if (!raw.startsWith(prefix)) return null;
     final value = raw.substring(prefix.length).trim();
-    // ERR1/ERR2 hata kodlarını görmezden gel
+    // ERR1/ERR2 hata kodlarini gormezden gel
     if (value.startsWith('ERR') || value.isEmpty) return null;
     return value;
   }

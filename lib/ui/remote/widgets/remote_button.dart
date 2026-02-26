@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+/// Generic tappable button used throughout the remote screen.
+/// Supports both rectangular (with custom borderRadius) and circular variants.
 class RemoteButton extends StatelessWidget {
   final VoidCallback onTap;
   final Widget child;
@@ -35,11 +36,6 @@ class RemoteButton extends StatelessWidget {
         height = size,
         borderRadius = const BorderRadius.all(Radius.circular(999));
 
-  void _handleTap() {
-    HapticFeedback.lightImpact();
-    onTap();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -49,25 +45,27 @@ class RemoteButton extends StatelessWidget {
         color: color,
         borderRadius: borderRadius,
         border: border ?? Border.all(color: Colors.white.withValues(alpha: 0.03), width: 1),
-        boxShadow: isFlat ? [] : [
-          // Dış gölge: Havada süzülme hissi
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-          // Üstten vuran hafif ortam ışığı (3D hissiyatı)
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.05),
-            blurRadius: 2,
-            offset: const Offset(0, -1),
-          ),
-        ],
+        boxShadow: isFlat
+            ? []
+            : [
+                // Elevation shadow for floating feel
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+                // Subtle top highlight for 3D feel
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  blurRadius: 2,
+                  offset: const Offset(0, -1),
+                ),
+              ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _handleTap,
+          onTap: onTap,
           borderRadius: borderRadius,
           highlightColor: Colors.white.withValues(alpha: 0.05),
           splashColor: Colors.white.withValues(alpha: 0.1),

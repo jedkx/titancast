@@ -43,7 +43,7 @@ class TitanCastApp extends StatelessWidget {
           bodyMedium: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, letterSpacing: 0.25),
           labelSmall: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5),
         ),
-        // Alt Navigasyon Barı Tasarımı
+        // Bottom navigation bar theme
         navigationBarTheme: NavigationBarThemeData(
           backgroundColor: panelColor,
           indicatorColor: primaryPurple.withValues(alpha: 0.2),

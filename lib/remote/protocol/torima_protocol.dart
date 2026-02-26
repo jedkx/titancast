@@ -70,8 +70,8 @@ class TorimaProtocol implements TvProtocol {
 
     if (!ok) {
       final msg = everAuthorised
-          ? 'Torima: Bağlantı kurulamadı. USB hata ayıklamanın açık olduğunu kontrol edin.'
-          : 'Torima: Projeksiyon ekranında "İzin ver" tuşuna basın, ardından tekrar deneyin.';
+          ? 'Torima: Baglanti kurulamadi. USB hata ayiklamanin acik oldugunu kontrol edin.'
+          : 'Torima: Projeksiyon ekraninda "Izin ver" tusuna basin, ardindan tekrar deneyin.';
       AppLogger.e(_tag, 'connect failed (ok=false, everAuthorised=$everAuthorised): $msg');
       throw TvProtocolException(msg);
     }
@@ -113,6 +113,18 @@ class TorimaProtocol implements TvProtocol {
   }
 
   @override
+  Future<void> sendText(String text) async {
+    if (!_connected || _crypto == null) {
+      AppLogger.w(_tag, 'sendText() called while disconnected');
+      throw const TvProtocolException('Not connected');
+    }
+    final escaped = text.replaceAll("'", "'\\''")
+        .replaceAll(' ', '%s');
+    AppLogger.d(_tag, 'sendText: "${text.substring(0, text.length.clamp(0, 40))}"');
+    await _shell("input text '$escaped'");
+  }
+
+  @override
   Future<void> disconnect() async {
     AppLogger.i(_tag, 'disconnect(): nulling connection and crypto');
     _connected  = false;
@@ -142,6 +154,14 @@ class TorimaProtocol implements TvProtocol {
   static const Map<RemoteCommand, String> _appMap = {
     RemoteCommand.netflix: 'com.netflix.ninja/.MainActivity',
     RemoteCommand.youtube: 'com.google.android.youtube/.HomeActivity',
+    // Spotify — same package as generic Android TV
+    RemoteCommand.spotify: 'com.spotify.tv.android/.SpotifyTVActivity',
+    // Amazon Prime Video
+    RemoteCommand.prime:   'com.amazon.amazonvideo.livingroom/.ui.activity.IntroActivity',
+    // Disney+
+    RemoteCommand.disney:  'com.disney.disneyplus/.MainActivity',
+    // Twitch
+    RemoteCommand.twitch:  'tv.twitch.android.app/.TwitchApplication',
   };
 
   static const Map<RemoteCommand, int> _keycodeMap = {

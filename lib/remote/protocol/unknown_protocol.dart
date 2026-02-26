@@ -21,5 +21,8 @@ class UnknownProtocol implements TvProtocol {
   Future<void> sendCommand(RemoteCommand command) async {}
 
   @override
+  Future<void> sendText(String text) async {}
+
+  @override
   Future<void> disconnect() async {}
 }

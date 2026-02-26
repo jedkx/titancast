@@ -47,8 +47,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onDeviceConnected() {
-    // Cihaz seçildi ama bağlantı henüz tamamlanmadı — sekme geçişi yapmıyoruz.
-    // Geçiş yalnızca bağlantı başarılı olunca _onConnectionStateChanged'dan yapılır.
+    // Device secildi ama baglanti henuz tamamlanmadi — sekme gecisi yapmiyoruz.
+    // Gecis yalnizca baglanti basarili olunca _onConnectionStateChanged'dan yapilir.
   }
 
   @override
@@ -61,7 +61,7 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: ValueListenableBuilder<List<LogEntry>>(
         valueListenable: AppLogger.entries,
         builder: (_, entries, __) {
-          // Son entry'de hata varsa log ikonunda kırmızı badge göster
+          // Son entry'de hata varsa log ikonunda kirmizi badge goster
           final hasRecentError = entries.isNotEmpty &&
               entries.last.level == LogLevel.error &&
               DateTime.now().difference(entries.last.time).inSeconds < 10;

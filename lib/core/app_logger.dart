@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-/// Log seviyeleri
+/// Severity levels
 enum LogLevel { verbose, debug, info, warning, error }
 
-/// Tek bir log kaydı
+/// A single log record
 class LogEntry {
   final DateTime time;
   final LogLevel level;
@@ -37,27 +37,27 @@ class LogEntry {
   String toString() => '[$timeLabel] $levelLabel/$tag: $message';
 }
 
-/// Merkezi uygulama loggeri.
+/// Centralised application logger.
 ///
-/// Kullanım:
+/// Usage:
 ///   AppLogger.i('PhilipsProtocol', 'connected to $ip');
 ///   AppLogger.e('RemoteController', 'TCP failed: $e');
 ///
-/// UI'da izlemek için [entries] ValueNotifier'ını dinle.
+/// Listen to [entries] to observe logs in the UI.
 class AppLogger {
   AppLogger._();
 
-  static const int _maxEntries = 500;
+  static const int _maxEntries = 5000;
 
-  /// UI'ın dinleyeceği notifier. Her yeni log'da notify eder.
+  /// ValueNotifier that fires on every new log entry — consumed by LogsScreen.
   static final ValueNotifier<List<LogEntry>> entries =
       ValueNotifier<List<LogEntry>>([]);
 
-  /// Release build'de verbose/debug logları bastır
+  /// Suppress verbose/debug logs in release builds
   static LogLevel minLevel =
       kDebugMode ? LogLevel.verbose : LogLevel.info;
 
-  // ── Public API ─────────────────────────────────────────────────────────────
+  // ── Public API ──────────────────────────────────────────────────────────────
 
   static void v(String tag, String msg) =>
       _log(LogLevel.verbose, tag, msg);
@@ -85,10 +85,10 @@ class AppLogger {
 
     final entry = LogEntry(level: level, tag: tag, message: msg);
 
-    // Flutter debug konsoluna da yaz
+    // Print to Flutter debug console.
     debugPrint(entry.toString());
 
-    // Buffer'a ekle (son _maxEntries kaydı tut)
+    // Append to buffer, capped at _maxEntries most-recent entries.
     final current = List<LogEntry>.from(entries.value)..add(entry);
     if (current.length > _maxEntries) {
       current.removeRange(0, current.length - _maxEntries);

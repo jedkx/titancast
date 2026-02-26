@@ -214,13 +214,13 @@ class RemoteController extends ChangeNotifier {
           '(osError=${e.osError?.errorCode}, msg=$reason)');
       return (
       reachable: false,
-      message: 'Cihaza ulaşılamıyor ($ip:$port). '
-          'TV\'nin açık ve aynı ağda olduğundan emin olun. ($reason)',
+      message: 'Device unreachable ($ip:$port). '
+          'Make sure the TV is on and on the same network. ($reason)',
       );
     } catch (e) {
       sw.stop();
       AppLogger.w(_tag, 'TCP check: ✗ $ip:$port unexpected error after ${sw.elapsedMilliseconds}ms: $e');
-      return (reachable: false, message: 'Bağlantı testi başarısız: $e');
+      return (reachable: false, message: 'Reachability check failed: $e');
     } finally {
       socket?.destroy();
     }

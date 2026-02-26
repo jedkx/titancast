@@ -68,7 +68,7 @@ class DeviceMenuSheet extends StatelessWidget {
   };
 
   void _showBrandPicker(BuildContext context) {
-    Navigator.pop(context); // menü kapat
+    Navigator.pop(context);
     final brands = [
       TvBrand.philips,
       TvBrand.samsung,
@@ -86,7 +86,7 @@ class DeviceMenuSheet extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF15151A),
-        title: const Text('Marka Seç', style: TextStyle(color: Colors.white)),
+        title: const Text('Select Brand', style: TextStyle(color: Colors.white)),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(
@@ -121,7 +121,7 @@ class DeviceMenuSheet extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('İptal',
+            child: const Text('Cancel',
                 style: TextStyle(color: Color(0xFF8A8A93))),
           ),
         ],

@@ -14,7 +14,7 @@ class PlaybackBar extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      // Arka plandaki keskin gölge ile süzülme hissi (Floating effect)
+      // Arka plandaki keskin golge ile suzulme hissi (Floating effect)
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
@@ -50,7 +50,7 @@ class PlaybackBar extends StatelessWidget {
                   onTap: () => onCommand(RemoteCommand.stop),
                 ),
 
-                // Play Butonu - Etrafında hafif bir Accent Glow var
+                // Play Butonu - Etrafinda hafif bir Accent Glow var
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,

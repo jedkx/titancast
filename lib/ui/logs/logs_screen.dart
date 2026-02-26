@@ -61,7 +61,7 @@ class _LogsScreenState extends State<LogsScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${_filtered.length} satır kopyalandı'),
+        content: Text('${_filtered.length} lines copied'),
         backgroundColor: const Color(0xFF8B5CF6),
         behavior: SnackBarBehavior.floating,
       ),
@@ -95,13 +95,13 @@ class _LogsScreenState extends State<LogsScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.copy_rounded, color: Color(0xFF8A8A93)),
-            tooltip: 'Tümünü kopyala',
+            tooltip: 'Copy all',
             onPressed: _copyAll,
           ),
           IconButton(
             icon: const Icon(Icons.delete_sweep_rounded,
                 color: Color(0xFF8A8A93)),
-            tooltip: 'Temizle',
+            tooltip: 'Clear logs',
             onPressed: () {
               AppLogger.clear();
               setState(() {});
@@ -111,7 +111,7 @@ class _LogsScreenState extends State<LogsScreen> {
       ),
       body: Column(
         children: [
-          // ── Filtre Barı ─────────────────────────────────────────────────
+          // ── Filter bar ──────────────────────────────────────────────────
           Container(
             color: const Color(0xFF15151A),
             padding:
@@ -162,7 +162,7 @@ class _LogsScreenState extends State<LogsScreen> {
                     style: const TextStyle(
                         color: Colors.white, fontSize: 12),
                     decoration: InputDecoration(
-                      hintText: 'Tag filtrele...',
+                      hintText: 'Filter by tag...',
                       hintStyle: const TextStyle(
                           color: Color(0xFF8A8A93), fontSize: 12),
                       isDense: true,
@@ -189,12 +189,12 @@ class _LogsScreenState extends State<LogsScreen> {
             ),
           ),
 
-          // ── Log Listesi ──────────────────────────────────────────────────
+          // ── Log list ────────────────────────────────────────────────────
           Expanded(
             child: logs.isEmpty
                 ? const Center(
                     child: Text(
-                      'Henüz log yok',
+                      'No logs yet',
                       style: TextStyle(color: Color(0xFF8A8A93)),
                     ),
                   )
@@ -235,58 +235,72 @@ class _LogRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _levelColor(entry.level);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Zaman
-          Text(
-            entry.timeLabel,
-            style: const TextStyle(
-                color: Color(0xFF4B5563), fontSize: 10, fontFamily: 'monospace'),
+    // Long-press a log row to copy that single line to clipboard.
+    return GestureDetector(
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: entry.toString()));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Line copied'),
+            backgroundColor: Color(0xFF8B5CF6),
+            duration: Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
           ),
-          const SizedBox(width: 6),
-          // Level badge
-          Container(
-            width: 14,
-            height: 14,
-            margin: const EdgeInsets.only(top: 1),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(3),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Timestamp
+            Text(
+              entry.timeLabel,
+              style: const TextStyle(
+                  color: Color(0xFF4B5563), fontSize: 10, fontFamily: 'monospace'),
             ),
-            child: Center(
-              child: Text(
-                entry.levelLabel,
-                style: TextStyle(
-                    color: color,
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold),
+            const SizedBox(width: 6),
+            // Level badge
+            Container(
+              width: 14,
+              height: 14,
+              margin: const EdgeInsets.only(top: 1),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Center(
+                child: Text(
+                  entry.levelLabel,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          // Tag
-          Text(
-            '${entry.tag}: ',
-            style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'monospace'),
-          ),
-          // Mesaj
-          Expanded(
-            child: Text(
-              entry.message,
-              style: const TextStyle(
-                  color: Color(0xFFE5E7EB),
+            const SizedBox(width: 6),
+            // Tag
+            Text(
+              '${entry.tag}: ',
+              style: TextStyle(
+                  color: color,
                   fontSize: 11,
+                  fontWeight: FontWeight.w600,
                   fontFamily: 'monospace'),
             ),
-          ),
-        ],
+            // Message
+            Expanded(
+              child: Text(
+                entry.message,
+                style: const TextStyle(
+                    color: Color(0xFFE5E7EB),
+                    fontSize: 11,
+                    fontFamily: 'monospace'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

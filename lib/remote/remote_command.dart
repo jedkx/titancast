@@ -38,6 +38,10 @@ enum RemoteCommand {
   // Smart buttons
   netflix,
   youtube,
+  spotify,
+  prime,
+  disney,
+  twitch,
 
   // Color / teletext keys (Philips, Android TV)
   colorRed,

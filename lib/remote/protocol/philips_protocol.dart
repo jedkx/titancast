@@ -110,9 +110,9 @@ class PhilipsProtocol implements TvProtocol {
 
     AppLogger.e(_tag, 'TV not found on port 1925 or 1926 — JointSpace may be disabled');
     throw const TvProtocolException(
-      'Philips: TV bulunamadı (port 1925/1926). '
-      'TV uzaktan kumandasıyla 5646877223 tuşlarına basarak '
-      'JointSpace\'i etkinleştirin.',
+      'Philips: TV not found (port 1925/1926). '
+          'Enable JointSpace via the TV remote by pressing '
+          '5-6-4-6-8-7-7-2-2-3 on the TV remote.',
     );
   }
 
@@ -140,8 +140,8 @@ class PhilipsProtocol implements TvProtocol {
       final response = _needsAndroidAuth
           ? await _postWithDigest(url, body)
           : await _client
-              .post(url, headers: {'Content-Type': 'application/json'}, body: body)
-              .timeout(const Duration(seconds: 5));
+          .post(url, headers: {'Content-Type': 'application/json'}, body: body)
+          .timeout(const Duration(seconds: 5));
       sw.stop();
 
       AppLogger.d(_tag, '← sendCommand($command): HTTP ${response.statusCode} '
@@ -312,8 +312,8 @@ class PhilipsProtocol implements TvProtocol {
       _password = null;
       AppLogger.e(_tag, 'confirmPairing() failed: HTTP ${response.statusCode}');
       throw TvProtocolException(
-          'Philips PIN doğrulaması başarısız (HTTP ${response.statusCode}). '
-          "PIN'i kontrol edip tekrar deneyin.");
+          'Philips PIN verification failed (HTTP ${response.statusCode}). '
+              "PIN'i kontrol edip tekrar deneyin.");
     }
 
     // After a successful grant, the ongoing Digest Auth credentials are:
@@ -337,17 +337,15 @@ class PhilipsProtocol implements TvProtocol {
   // Philips Advanced API (Ambilight, Apps, Keyboard, Settings)
   // ---------------------------------------------------------------------------
 
-  /// Ambilight mevcut durumunu döndürür (on/off + mevcut mod).
+  /// Returns current Ambilight configuration (on/off + active style).
   /// Endpoint: GET /<ver>/ambilight/currentconfiguration
   Future<Map<String, dynamic>> ambilightGetConfig() async {
     AppLogger.d(_tag, 'ambilightGetConfig()');
     return _getJson('$_baseUrl/$_apiVersion/ambilight/currentconfiguration');
   }
 
-  /// Ambilight'ı açar veya kapatır.
-  /// Endpoint: POST /<ver>/ambilight/power  { "power": "On" | "Off" }
   /// Turns Ambilight on or off.
-  /// Primary: POST /ambilight/power {"power": "On"|"Off"}
+  /// Primary:  POST /ambilight/power {"power": "On"|"Off"} (API v6)
   /// Fallback: POST /ambilight/currentconfiguration {"styleName": "OFF"} for older firmware.
   Future<void> ambilightSetPower({required bool on}) async {
     AppLogger.d(_tag, 'ambilightSetPower(on=$on)');
@@ -364,22 +362,47 @@ class PhilipsProtocol implements TvProtocol {
       await _postJson('$_baseUrl/$_apiVersion/ambilight/currentconfiguration',
           jsonEncode({'styleName': 'FOLLOW_VIDEO', 'isExpert': false, 'menuSetting': 'STANDARD'}));
     } else {
-      // Turning OFF: two approaches
+      // Turning OFF: three-layer approach for maximum firmware compatibility
+      // Layer 1: /ambilight/power endpoint (API v6 preferred)
+      bool turnedOff = false;
       try {
         await _postJson('$_baseUrl/$_apiVersion/ambilight/power',
             jsonEncode({'power': 'Off'}));
-        return;
+        turnedOff = true;
       } catch (e) {
         AppLogger.w(_tag, 'ambilightSetPower OFF via /power failed: $e — trying currentconfiguration');
       }
-      // Fallback: set styleName to OFF
-      await _postJson('$_baseUrl/$_apiVersion/ambilight/currentconfiguration',
-          jsonEncode({'styleName': 'OFF', 'isExpert': false}));
+
+      // Layer 2: set styleName to OFF
+      if (!turnedOff) {
+        try {
+          await _postJson('$_baseUrl/$_apiVersion/ambilight/currentconfiguration',
+              jsonEncode({'styleName': 'OFF', 'isExpert': false}));
+          turnedOff = true;
+        } catch (e) {
+          AppLogger.w(_tag, 'ambilightSetPower OFF via currentconfiguration failed: $e — trying key');
+        }
+      }
+
+      // Layer 3: AmbilightOnOff key — exactly like pressing the button on the physical remote
+      if (!turnedOff) {
+        AppLogger.w(_tag, 'ambilightSetPower OFF: both API endpoints failed, sending AmbilightOnOff key');
+        final keyUrl = Uri.parse('$_baseUrl/$_apiVersion/input/key');
+        final keyBody = jsonEncode({'key': 'AmbilightOnOff'});
+        if (_needsAndroidAuth) {
+          await _postWithDigest(keyUrl, keyBody);
+        } else {
+          await _client
+              .post(keyUrl, headers: {'Content-Type': 'application/json'}, body: keyBody)
+              .timeout(const Duration(seconds: 5));
+        }
+      }
     }
+    AppLogger.d(_tag, 'ambilightSetPower: done (on=$on)');
   }
 
-  /// Ambilight modunu değiştirir.
-  /// Geçerli modlar: "Standard", "Natural", "Immersive", "Game", "Comfort", "Relax"
+  /// Changes the Ambilight style.
+  /// Valid styleName values: FOLLOW_VIDEO, FOLLOW_AUDIO, FOLLOW_COLOR, LOUNGE, OFF
   /// Endpoint: POST /<ver>/ambilight/currentconfiguration
   /// Sets Ambilight style.
   /// [styleName] must be one of: FOLLOW_VIDEO, FOLLOW_AUDIO, FOLLOW_COLOR, LOUNGE, MANUAL
@@ -399,8 +422,6 @@ class PhilipsProtocol implements TvProtocol {
     await _postJson('$_baseUrl/$_apiVersion/ambilight/currentconfiguration', body);
   }
 
-  /// Ambilight rengini sabit renge ayarlar (lounge/party modu).
-  /// Endpoint: POST /<ver>/ambilight/currentconfiguration
   /// Sets Ambilight to a fixed color (FOLLOW_COLOR style).
   /// Converts RGB to Philips HSB color space.
   /// algorithm: MANUAL_HUE (fixed color) or AUTOMATIC_HUE (color shifts with content)
@@ -474,30 +495,63 @@ class PhilipsProtocol implements TvProtocol {
     return [hue, sat * 255, max * 255];
   }
 
-  /// Yüklü uygulamaların listesini döndürür.
+  /// Returns the list of installed TV applications.
   /// Endpoint: GET /<ver>/applications
+  /// Response: { "applications": [ { "label": "Netflix", "intent": {...}, "order": 0, ... } ] }
+  /// Reference: JointSpace API v6 (eslavnov/pylips docs)
   Future<List<Map<String, dynamic>>> getApplications() async {
-    AppLogger.d(_tag, 'getApplications()');
-    final data = await _getJson('$_baseUrl/$_apiVersion/applications');
-    final list = data['applications'] as List? ?? [];
-    return list.cast<Map<String, dynamic>>();
+    final sw = Stopwatch()..start();
+    AppLogger.d(_tag, 'getApplications(): fetching app list');
+    final data = await _getJson('${_baseUrl}/${_apiVersion}/applications');
+    final raw  = data['applications'] as List? ?? [];
+    // Sort by 'order' field if present, ascending
+    final list = raw.cast<Map<String, dynamic>>()
+      ..sort((a, b) => (a['order'] as int? ?? 999)
+          .compareTo(b['order'] as int? ?? 999));
+    AppLogger.i(_tag,
+        'getApplications(): got ${list.length} apps in ${sw.elapsedMilliseconds}ms');
+    return list;
   }
 
-  /// Belirtilen paketi başlatır.
-  /// Endpoint: POST /<ver>/activities/launch  { "intent": { ... } }
-  Future<void> launchApplication(Map<String, dynamic> intent) async {
-    final body = jsonEncode({'intent': intent});
-    AppLogger.d(_tag, 'launchApplication(${intent['component']?['packageName']})');
-    await _postJson('$_baseUrl/$_apiVersion/activities/launch', body);
+  /// Launches a TV application via the JointSpace activities/launch endpoint.
+  ///
+  /// [app] must be the full app object returned by [getApplications], which
+  /// already contains the "intent" field.  Do NOT wrap it in another "intent"
+  /// key — the Philips API expects the raw app object as the POST body.
+  ///
+  /// Reference: pylips launch_app command (eslavnov/pylips, docs/Home.md)
+  /// Example body: {"label":"Netflix","intent":{...},"order":0,"id":"...","type":"app"}
+  Future<void> launchApplication(Map<String, dynamic> app) async {
+    // Ensure the intent has the required "action" field — some /applications
+    // responses omit it, but the TV requires it to route the intent correctly.
+    final intent = app['intent'] as Map<String, dynamic>? ?? {};
+    if (!intent.containsKey('action')) {
+      intent['action'] = 'android.intent.action.MAIN';
+    }
+    final fullApp = Map<String, dynamic>.from(app);
+    fullApp['intent'] = intent;
+
+    final pkgName = intent['component']?['packageName'] as String? ?? '?';
+    final body    = jsonEncode(fullApp);
+    final sw      = Stopwatch()..start();
+    AppLogger.d(_tag, 'launchApplication: pkg=$pkgName');
+    await _postJson('${_baseUrl}/${_apiVersion}/activities/launch', body);
+    AppLogger.i(_tag, 'launchApplication: launched $pkgName in ${sw.elapsedMilliseconds}ms');
   }
 
-  /// Ekran klavyesini gösterir veya gizler.
-  /// Endpoint: POST /<ver>/input/key  key=PhilipsMenu (açık menü aracılığıyla)
-  /// Not: JointSpace'in doğrudan bir "show keyboard" endpoint'i yoktur;
-  /// bunun yerine metin girme için /input/keyboard kullanılır.
+  /// Sends text to the TV keyboard via /input/key (character-by-character).
+  ///
+  /// Keyboard polling is paused during the send to avoid HTTP connection
+  /// contention with the concurrent Digest-auth poll timer.
   Future<void> sendKeyboardInput(String text) async {
     if (!_connected) return;
+    final sw = Stopwatch()..start();
     AppLogger.d(_tag, 'sendKeyboardInput("${_truncate(text, 40)}")');
+
+    // Pause keyboard polling during text send to avoid HTTP connection contention.
+    // The poll timer will be restarted after all characters are sent.
+    final wasPolling = _keyboardPollTimer != null;
+    if (wasPolling) _stopKeyboardPolling();
 
     // Philips JointSpace keyboard API:
     // /input/keyboard (v5) returns HTTP 405 on Android TV firmware.
@@ -543,31 +597,81 @@ class PhilipsProtocol implements TvProtocol {
         AppLogger.w(_tag, 'sendKeyboardInput: char "$char" failed — $e');
       }
     }
-    AppLogger.i(_tag, 'sendKeyboardInput: sent ${text.length} chars');
+    if (wasPolling) _startKeyboardPolling();
+    AppLogger.i(_tag,
+        'sendKeyboardInput: sent ${text.length} char(s) in ${sw.elapsedMilliseconds}ms');
   }
 
-  /// TV sistem bilgilerini döndürür (model, software version, vs).
+
+  // ---------------------------------------------------------------------------
+  // Touchpad / pointer control
+  // ---------------------------------------------------------------------------
+
+  /// Sends a pointer move event to the TV.
+  /// This makes the TV treat the phone as a mouse — a cursor appears on screen.
+  ///
+  /// Endpoint: POST /<ver>/input/pointer
+  /// Reference: Discovered via MitM analysis of the official Philips TV Remote
+  ///   app (iOS). Documented in HA philips_js integration source code.
+  Future<void> sendPointerMove(int dx, int dy) async {
+    if (!_connected) return;
+    final body = jsonEncode({'key': 'Move', 'x': dx, 'y': dy});
+    final url  = Uri.parse('${_baseUrl}/${_apiVersion}/input/pointer');
+    try {
+      if (_needsAndroidAuth) {
+        await _postWithDigest(url, body);
+      } else {
+        await _client.post(url,
+            headers: {'Content-Type': 'application/json'}, body: body)
+            .timeout(const Duration(seconds: 2));
+      }
+    } catch (_) {
+      // Pointer events are best-effort — do not surface errors to the UI.
+    }
+  }
+
+  /// Sends a pointer tap event to the TV (equivalent to mouse click / OK).
+  /// Endpoint: POST /<ver>/input/pointer  {"key":"Tap"}
+  Future<void> sendPointerTap() async {
+    if (!_connected) return;
+    final body = jsonEncode({'key': 'Tap'});
+    final url  = Uri.parse('${_baseUrl}/${_apiVersion}/input/pointer');
+    try {
+      if (_needsAndroidAuth) {
+        await _postWithDigest(url, body);
+      } else {
+        await _client.post(url,
+            headers: {'Content-Type': 'application/json'}, body: body)
+            .timeout(const Duration(seconds: 2));
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> sendText(String text) => sendKeyboardInput(text);
+
+  /// Returns TV system information (model, software version, etc).
   /// Endpoint: GET /<ver>/system
   Future<Map<String, dynamic>> getSystemInfo() async {
     AppLogger.d(_tag, 'getSystemInfo()');
     return _getJson('$_baseUrl/$_apiVersion/system');
   }
 
-  /// Ağ bilgilerini döndürür (IP, MAC, SSID).
+  /// Returns network device info (IP, MAC, SSID).
   /// Endpoint: GET /<ver>/network/devices
   Future<Map<String, dynamic>> getNetworkInfo() async {
     AppLogger.d(_tag, 'getNetworkInfo()');
     return _getJson('$_baseUrl/$_apiVersion/network/devices');
   }
 
-  /// Ses ayarlarını döndürür (volume, mute, min, max).
+  /// Returns audio settings (volume, mute, min, max).
   /// Endpoint: GET /<ver>/audio/volume
   Future<Map<String, dynamic>> getVolume() async {
     AppLogger.d(_tag, 'getVolume()');
     return _getJson('$_baseUrl/$_apiVersion/audio/volume');
   }
 
-  /// Ses seviyesini direkt değere ayarlar.
+  /// Sets volume to an absolute level.
   /// Endpoint: POST /<ver>/audio/volume  { "current": N, "muted": false }
   Future<void> setVolume(int level) async {
     final body = jsonEncode({'current': level, 'muted': false});
@@ -575,14 +679,14 @@ class PhilipsProtocol implements TvProtocol {
     await _postJson('$_baseUrl/$_apiVersion/audio/volume', body);
   }
 
-  /// Mevcut kanal bilgisini döndürür.
+  /// Returns current channel info.
   /// Endpoint: GET /<ver>/channels/current
   Future<Map<String, dynamic>> getCurrentChannel() async {
     AppLogger.d(_tag, 'getCurrentChannel()');
     return _getJson('$_baseUrl/$_apiVersion/channels/current');
   }
 
-  /// Kanal listesini döndürür.
+  /// Returns channel list.
   /// Endpoint: GET /<ver>/channels
   Future<List<Map<String, dynamic>>> getChannels() async {
     AppLogger.d(_tag, 'getChannels()');
@@ -640,8 +744,17 @@ class PhilipsProtocol implements TvProtocol {
       sw.stop();
       AppLogger.v(_tag, 'POST $url → HTTP ${response.statusCode} in ${sw.elapsedMilliseconds}ms');
       if (response.statusCode != 200 && response.statusCode != 204) {
-        AppLogger.w(_tag, '_postJson: HTTP ${response.statusCode} for $url');
-        throw TvProtocolException('Philips API error: HTTP ${response.statusCode}');
+        // Some Philips firmware returns non-200 but with an HTML "Ok" body — treat as success.
+        final bodyTrimmed = response.body.trim().toLowerCase();
+        final isHtmlOk = bodyTrimmed.contains('<title>ok</title>') ||
+            bodyTrimmed == 'ok' ||
+            bodyTrimmed == '"ok"';
+        if (isHtmlOk) {
+          AppLogger.d(_tag, '_postJson: HTTP ${response.statusCode} but body is Ok — treating as success');
+        } else {
+          AppLogger.w(_tag, '_postJson: HTTP ${response.statusCode} for $url');
+          throw TvProtocolException('Philips API error: HTTP ${response.statusCode}');
+        }
       }
     } catch (e) {
       sw.stop();
@@ -744,11 +857,11 @@ class PhilipsProtocol implements TvProtocol {
     AppLogger.v(_tag, 'postWithDigest: retrying with Digest credentials');
     final second = await _client
         .post(url,
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': authHeader,
-            },
-            body: body)
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: body)
         .timeout(const Duration(seconds: 5));
     AppLogger.v(_tag, 'postWithDigest: retry HTTP ${second.statusCode}');
     return second;
@@ -819,7 +932,7 @@ class PhilipsProtocol implements TvProtocol {
     final rng = Random.secure();
     return List.generate(
       len,
-      (_) => rng.nextInt(256).toRadixString(16).padLeft(2, '0'),
+          (_) => rng.nextInt(256).toRadixString(16).padLeft(2, '0'),
     ).join();
   }
 
@@ -887,7 +1000,7 @@ class PhilipsProtocol implements TvProtocol {
 class PhilipsPairingRequiredException extends TvProtocolException {
   const PhilipsPairingRequiredException()
       : super(
-          'Philips Android TV eşleştirme gerekiyor. '
-          'TV ekranında görünen PIN\'i girin.',
-        );
+    'Philips Android TV pairing required. '
+        'Enter the PIN shown on the TV screen.',
+  );
 }

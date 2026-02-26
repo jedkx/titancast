@@ -61,7 +61,7 @@ class _NetworkScanScreenState extends State<NetworkScanScreen> with SingleTicker
       _statusMessage = 'Searching for devices...';
     });
 
-    // HATA 1 ÇÖZÜMÜ: Orijinalindeki mode ve timeout parametreleri eklendi
+    // HATA 1 COZUMU: Orijinalindeki mode ve timeout parametreleri eklendi
     final stream = _manager.startDiscovery(
       mode: DiscoveryMode.network,
       timeout: const Duration(seconds: 15),

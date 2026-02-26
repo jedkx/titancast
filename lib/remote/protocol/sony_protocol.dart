@@ -75,7 +75,7 @@ class SonyProtocol implements TvProtocol {
           AppLogger.e(_tag, 'response does not look like a Sony Bravia — '
               'missing "result"/"product"/"model" fields');
           throw const TvProtocolException(
-            'Sony: Bu cihaz Sony Bravia değil — beklenen JSON yanıtı alınamadı.',
+            'Sony: Bu cihaz Sony Bravia degil — beklenen JSON yaniti alinamadi.',
           );
         }
         _connected = true;
@@ -145,6 +145,24 @@ class SonyProtocol implements TvProtocol {
       sw.stop();
       AppLogger.e(_tag, 'sendCommand($command) exception after ${sw.elapsedMilliseconds}ms: $e');
       throw TvProtocolException('Sony: $e');
+    }
+  }
+
+  @override
+  Future<void> sendText(String text) async {
+    if (!_connected) return;
+    // Sony Bravia text input via REST appControl setTextForm.
+    // Source: https://pro-bravia.sony.net/develop/integrate/rest-api/
+    AppLogger.d(_tag, 'sendText: "${text.length > 40 ? text.substring(0, 40) : text}"');
+    final url = Uri.http(ip, '/sony/appControl');
+    final body = '{"method":"setTextForm","id":1,"params":[{"encKey":"","text":"${text.replaceAll('"', '\\"')}"}],"version":"1.0"}';
+    try {
+      final response = await _client
+          .post(url, headers: _headers, body: body)
+          .timeout(const Duration(seconds: 5));
+      AppLogger.d(_tag, 'sendText response: HTTP ${response.statusCode}');
+    } catch (e) {
+      AppLogger.w(_tag, 'sendText failed: $e');
     }
   }
 

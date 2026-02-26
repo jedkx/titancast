@@ -67,7 +67,7 @@ class LgProtocol implements TvProtocol {
         _connected = false;
         AppLogger.e(_tag, 'WebSocket stream error: $e');
         final err = TvProtocolException(
-          'LG: Bağlantı hatası. TV\'nin açık ve aynı ağda olduğundan emin olun. ($e)',
+          'LG: Connection error. Make sure the TV is on and on the same network. ($e)',
         );
         if (_socketOpenCompleter?.isCompleted == false) {
           _socketOpenCompleter!.completeError(err);
@@ -81,11 +81,11 @@ class LgProtocol implements TvProtocol {
         AppLogger.w(_tag, 'WebSocket stream closed (onDone)');
         if (_socketOpenCompleter?.isCompleted == false) {
           _socketOpenCompleter!.completeError(
-              const TvProtocolException('LG: Bağlantı beklenmedik şekilde kapandı.'));
+              const TvProtocolException('LG: Connection closed unexpectedly.'));
         }
         if (_connectCompleter?.isCompleted == false) {
           _connectCompleter!.completeError(
-              const TvProtocolException('LG: Bağlantı beklenmedik şekilde kapandı.'));
+              const TvProtocolException('LG: Connection closed unexpectedly.'));
         }
       },
     );
@@ -99,10 +99,10 @@ class LgProtocol implements TvProtocol {
     await _socketOpenCompleter!.future.timeout(
       const Duration(seconds: 4),
       onTimeout: () {
-        AppLogger.e(_tag, 'phase 1 timeout (4s) — TV bekleme modunda veya yanıt vermiyor');
+        AppLogger.e(_tag, 'phase 1 timeout (4s) — TV in standby or not responding');
         throw const TvProtocolException(
-          'LG: TV bekleme modunda veya yanıt vermiyor. '
-          'TV\'yi tamamen açıp tekrar deneyin.',
+          'LG: TV is in standby or not responding. '
+          'Power cycle the TV and try again.',
         );
       },
     );
@@ -120,11 +120,11 @@ class LgProtocol implements TvProtocol {
       pairingTimeout,
       onTimeout: () {
         AppLogger.e(_tag, 'phase 2 timeout (${pairingTimeout.inSeconds}s) — '
-            '${_clientKey != null ? "TV yanıtsız" : "kullanıcı onaylamadı"}');
+            '${_clientKey != null ? "TV not responding" : "user did not approve"}');
         throw TvProtocolException(
           _clientKey != null
-              ? 'LG: TV yanıt vermiyor. TV\'yi yeniden başlatıp tekrar deneyin.'
-              : 'LG: Eşleştirme zaman aşımı. TV ekranında "Bağlanmaya İzin Ver" seçeneğine basın.',
+              ? 'LG: TV not responding. Restart the TV and try again.'
+              : 'LG: Pairing timeout. Press "Allow" on the TV screen.',
         );
       },
     );
@@ -153,6 +153,20 @@ class LgProtocol implements TvProtocol {
     await _request(ssapUri, payload: payload);
     sw.stop();
     AppLogger.v(_tag, '← sendCommand($command) OK in ${sw.elapsedMilliseconds}ms');
+  }
+
+  @override
+  Future<void> sendText(String text) async {
+    if (!_connected) return;
+    // LG webOS IME: insertText replaces the current input field content.
+    // Source: https://github.com/hobbyquaker/lgtv2 (com.webos.service.ime)
+    AppLogger.d(_tag, 'sendText: "${text.length > 40 ? text.substring(0, 40) : text}"');
+    try {
+      await _request('ssap://com.webos.service.ime/insertText',
+          payload: {'text': text, 'replace': 0});
+    } catch (e) {
+      AppLogger.w(_tag, 'sendText failed: $e');
+    }
   }
 
   @override

@@ -11,6 +11,10 @@ abstract class TvProtocol {
   /// Throws [TvProtocolException] on failure.
   Future<void> sendCommand(RemoteCommand command);
 
+  /// Sends [text] to the TV as keyboard input.
+  /// Default implementation is a no-op for protocols that do not support text entry.
+  Future<void> sendText(String text) async {}
+
   /// Releases all resources (sockets, timers).
   Future<void> disconnect();
 

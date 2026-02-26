@@ -27,7 +27,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   bool _isLoading           = false;
   String? _wifiSsid;
   DeviceType? _activeFilter;
-  String? _connectedIp;        // seçili cihaz IP'si
+  String? _connectedIp;
   RemoteConnectionState _connectionState = RemoteConnectionState.disconnected;
 
   final List<DiscoveredDevice> _updateBuffer = [];
@@ -61,9 +61,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   List<Object> _buildFilteredList() {
-    if (_activeFilter == null) return _repo.buildGroupedList();
+    // Modems/routers are always excluded from the device list.
+    final controllable = _repo.devices.where((d) => d.isControllable).toList();
 
-    final filtered = _repo.devices.where((d) => d.deviceType == _activeFilter).toList();
+    if (_activeFilter == null) return _repo.buildGroupedListFrom(controllable);
+
+    final filtered = controllable.where((d) => d.deviceType == _activeFilter).toList();
     if (filtered.isEmpty) return [];
 
     final ssids = filtered.map((d) => d.ssid ?? 'Unknown Network').toSet();
@@ -118,6 +121,31 @@ class _DevicesScreenState extends State<DevicesScreen> {
         ),
       ),
     );
+  }
+
+  /// Pull-to-refresh: disconnects all devices and reloads from SharedPreferences.
+  /// Does NOT re-run network discovery — use "Find Device" for that.
+  Future<void> _refreshDevices() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+
+    // Disconnect any active connection before refreshing.
+    if (_connectedIp != null) {
+      _connectedIp = null;
+      _connectionState = RemoteConnectionState.disconnected;
+      activeDeviceNotifier.value = null;
+      activeConnectionStateNotifier.value = RemoteConnectionState.disconnected;
+    }
+
+    // Reload device list from SharedPreferences (no network scan).
+    await _repo.init();
+    await _fetchWifiSsid();
+    if (mounted) {
+      setState(() {
+        _groupedList = _buildFilteredList();
+        _isLoading   = false;
+      });
+    }
   }
 
   void _attachDiscoveryStream(Stream<DiscoveredDevice> stream) {
@@ -240,10 +268,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final deviceCount = _repo.devices.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0E), // Derin Antrasit
+      backgroundColor: const Color(0xFF0A0A0E),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isLoading ? null : _openFindDevice,
-        backgroundColor: const Color(0xFF8B5CF6), // Neon Mor Vurgu
+        backgroundColor: const Color(0xFF8B5CF6),
         foregroundColor: Colors.white,
         elevation: 8,
         icon: _isLoading
@@ -257,9 +285,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
           style: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.5),
         ),
       ),
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _refreshDevices,
+        color: const Color(0xFF8B5CF6),
+        backgroundColor: const Color(0xFF15151A),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           SliverAppBar(
             pinned: true,
             expandedHeight: 140.0,
@@ -277,7 +309,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 return Stack(
                   fit: StackFit.expand,
                   children: [
-                    // AÇIK DURUM (Expanded)
+                    // Expanded header state
                     Positioned(
                       left: 24,
                       bottom: 16,
@@ -313,7 +345,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                       ),
                     ),
 
-                    // KAPALI DURUM (Collapsed)
+                    // Collapsed header state
                     Positioned(
                       left: 24,
                       right: 24,
@@ -406,7 +438,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 },
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
