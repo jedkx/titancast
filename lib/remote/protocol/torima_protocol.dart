@@ -4,6 +4,7 @@ import 'package:flutter_adb/adb_crypto.dart';
 import 'package:flutter_adb/flutter_adb.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:titancast/core/app_logger.dart';
+import 'package:titancast/remote/protocol/adb_key_store.dart';
 import 'package:titancast/remote/remote_command.dart';
 import 'package:titancast/remote/protocol/tv_protocol.dart';
 
@@ -49,8 +50,8 @@ class TorimaProtocol implements TvProtocol {
     final everAuthorised = prefs.getBool(key) ?? false;
     AppLogger.d(_tag, 'everAuthorised=$everAuthorised (key=$key)');
 
-    AppLogger.d(_tag, 'creating AdbCrypto and AdbConnection');
-    _crypto     = AdbCrypto();
+    AppLogger.d(_tag, 'loading persisted ADB keypair');
+    _crypto     = await AdbKeyStore.loadOrCreate();
     _connection = AdbConnection(ip, port, _crypto!);
 
     AppLogger.d(_tag, 'calling AdbConnection.connect() (timeout=15s) — '

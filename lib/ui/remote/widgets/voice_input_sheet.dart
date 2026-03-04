@@ -115,8 +115,10 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
       },
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 3),
-      cancelOnError: false,
-      partialResults: true,
+      listenOptions: SpeechListenOptions(
+        cancelOnError: false,
+        partialResults: true,
+      ),
     );
   }
 

@@ -14,6 +14,7 @@ class MdnsDiscoveryService {
   // Each entry is a well-known mDNS service type.
   // Ordered roughly by prevalence in living room devices.
   static const List<String> _serviceTypes = [
+    '_titancast._tcp.local',        // TitanCast Receiver companion app
     '_googlecast._tcp.local',       // Chromecast, Android TV, Google TV
     '_airplay._tcp.local',          // Apple TV, AirPlay receivers
     '_spotify-connect._tcp.local',  // Spotify-enabled speakers and TVs
@@ -137,6 +138,7 @@ class MdnsDiscoveryService {
 
   /// Infers the manufacturer from the service type as a last resort.
   String _inferManufacturer(String serviceType) {
+    if (serviceType.contains('titancast')) return 'TitanCast';
     if (serviceType.contains('googlecast')) return 'Google';
     if (serviceType.contains('airplay')) return 'Apple';
     if (serviceType.contains('spotify')) return 'Spotify';

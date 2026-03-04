@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../data/device_repository.dart';
 import '../../../discovery/discovery_model.dart';
 import '../../../discovery/discovery_manager.dart';
+import '../../../core/app_logger.dart';
 import '../find_tv/find_tv_screen.dart';
 import '../shared/wifi_info_widget.dart';
 import 'device_list_item.dart';
@@ -160,6 +161,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   void _bufferUpdate(DiscoveredDevice device) {
+    // Only save controllable devices (excludes routers/modems)
+    if (!device.isControllable) {
+      AppLogger.d('DevicesScreen', 'Filtered out router/modem device: ${device.friendlyName} (${device.ip})');
+      return;
+    }
+    
     _updateBuffer.add(device);
     _throttleTimer?.cancel();
     _throttleTimer = Timer(const Duration(milliseconds: 400), () async {
@@ -265,7 +272,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final deviceCount = _repo.devices.length;
+    final deviceCount = _repo.devices.where((d) => d.isControllable).length;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0E),

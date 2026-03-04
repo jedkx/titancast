@@ -72,7 +72,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
                   borderLength: 40,
                   borderWidth: 6,
                   cutOutSize: 260,
-                  overlayColor: Colors.black.withOpacity(0.7),
+                  overlayColor: Colors.black.withValues(alpha: 0.7),
                 ),
               ),
               child: _errorMessage != null

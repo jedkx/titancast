@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../discovery/discovery_model.dart';
-import '../../../remote/brand_detector.dart';
+
 import '../../../remote/tv_brand.dart';
 import '../../../remote/remote_controller.dart';
 

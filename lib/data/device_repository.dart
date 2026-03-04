@@ -79,12 +79,12 @@ class DeviceRepository {
 
     if (isNew) {
       AppLogger.i(_tag, 'save: NEW device added — "${incoming.friendlyName}" '
-          'ip=${incoming.ip} brand=${brand?.name} '
+          'ip=${incoming.ip} brand=${brand.name} '
           'manufacturer=${incoming.manufacturer ?? 'none'}');
       _cache.insert(0, withBrand);
     } else {
       final existing = _cache[index];
-      final resolvedBrand = (brand != null && brand != TvBrand.unknown)
+      final resolvedBrand = (brand != TvBrand.unknown)
           ? brand
           : existing.detectedBrand;
       AppLogger.d(_tag, 'save: UPDATE existing device ${incoming.ip} — '

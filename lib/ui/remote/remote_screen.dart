@@ -14,7 +14,6 @@ import 'package:titancast/ui/remote/widgets/keyboard_input_sheet.dart';
 import 'package:titancast/ui/remote/widgets/voice_input_sheet.dart';
 import 'package:titancast/ui/remote/philips_remote_state.dart';
 
-const _tag = 'RemoteScreen';
 
 class RemoteScreen extends StatefulWidget {
   const RemoteScreen({super.key});

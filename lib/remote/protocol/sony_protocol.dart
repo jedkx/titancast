@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:titancast/core/app_logger.dart';
 import 'package:titancast/remote/remote_command.dart';

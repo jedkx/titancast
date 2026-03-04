@@ -212,11 +212,20 @@ class RemoteController extends ChangeNotifier {
       final reason = e.osError?.message ?? e.message;
       AppLogger.w(_tag, 'TCP check: ✗ $ip:$port unreachable after ${sw.elapsedMilliseconds}ms '
           '(osError=${e.osError?.errorCode}, msg=$reason)');
-      return (
-      reachable: false,
-      message: 'Device unreachable ($ip:$port). '
-          'Make sure the TV is on and on the same network. ($reason)',
-      );
+      final String userMessage;
+      if (brand == TvBrand.torima) {
+        userMessage =
+            'Projeksiyona bağlanılamadı ($ip:$port). '
+            'Projeksiyon Ayarlar → Hakkında → Derleme Numarasına 7 kez basarak '
+            'Geliştirici Seçeneklerini açın, ardından '
+            '"USB Hata Ayıklama" ve "ADB over Network" seçeneklerini etkinleştirin. '
+            '($reason)';
+      } else {
+        userMessage =
+            'Device unreachable ($ip:$port). '
+            'Make sure the TV is on and on the same network. ($reason)';
+      }
+      return (reachable: false, message: userMessage);
     } catch (e) {
       sw.stop();
       AppLogger.w(_tag, 'TCP check: ✗ $ip:$port unexpected error after ${sw.elapsedMilliseconds}ms: $e');

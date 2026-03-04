@@ -217,6 +217,7 @@ class _LogsScreenState extends State<LogsScreen> {
         LogLevel.info    => const Color(0xFF34D399),
         LogLevel.warning => const Color(0xFFFBBF24),
         LogLevel.error   => const Color(0xFFF87171),
+        LogLevel.fatal   => const Color(0xFFDC2626),
       };
 }
 
@@ -230,6 +231,7 @@ class _LogRow extends StatelessWidget {
         LogLevel.info    => const Color(0xFF34D399),
         LogLevel.warning => const Color(0xFFFBBF24),
         LogLevel.error   => const Color(0xFFF87171),
+        LogLevel.fatal   => const Color(0xFFDC2626),
       };
 
   @override

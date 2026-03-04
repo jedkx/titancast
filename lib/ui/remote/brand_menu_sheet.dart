@@ -438,71 +438,6 @@ class _AppsTab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Keyboard Tab
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _KeyboardTab extends StatelessWidget {
-  final ScrollController scrollController;
-  final VoidCallback onOpen;
-  const _KeyboardTab({required this.scrollController, required this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E26),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-          ),
-          child: Column(children: [
-            Container(
-              width: 56, height: 56,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: const Icon(Icons.keyboard_outlined, color: Color(0xFF8B5CF6), size: 28),
-            ),
-            const SizedBox(height: 16),
-            const Text('Send text to TV',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            const Text(
-                'Open keyboard to type text that will be\nsent directly to the TV screen.',
-                style: TextStyle(color: Color(0xFF8A8A93), fontSize: 13, height: 1.6),
-                textAlign: TextAlign.center),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity, height: 52,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                onPressed: onOpen,
-                icon: const Icon(Icons.keyboard_outlined, size: 20),
-                label: const Text('Open Keyboard',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'Keyboard also opens automatically when the TV\nshows a text input field.',
-          style: TextStyle(color: Color(0xFF5A5A6A), fontSize: 12, height: 1.5),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Shared micro-widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -540,7 +475,7 @@ class _SheetHeader extends StatelessWidget {
                     fontWeight: FontWeight.w700),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
             if (hasBrand)
-              Text(BrandMenuSheet.brandLabel(brand!),
+              Text(BrandMenuSheet.brandLabel(brand),
                   style: const TextStyle(color: Color(0xFF8B5CF6), fontSize: 12,
                       fontWeight: FontWeight.w600)),
           ]),

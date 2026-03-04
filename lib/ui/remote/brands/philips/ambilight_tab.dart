@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 
 class AmbiStyle {
@@ -329,7 +328,7 @@ class _PowerRow extends StatelessWidget {
             ),
             Switch(
               value: on,
-              activeColor: const Color(0xFF8B5CF6),
+              activeThumbColor: const Color(0xFF8B5CF6),
               onChanged: (_) => onToggle(),
             ),
           ],

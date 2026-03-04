@@ -3,7 +3,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
+import 'package:titancast/core/app_logger.dart';
 import '../discovery_model.dart';
+
+const _tag = 'NetworkProbe';
 
 class NetworkProbeDiscoveryService {
   static const Duration _socketTimeout = Duration(milliseconds: 300);
@@ -164,7 +167,9 @@ class NetworkProbeDiscoveryService {
           ));
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.v(_tag, 'Failed to resolve DIAL device at $ip: $e');
+    }
   }
 
   Future<void> _resolveGenericHttp(String ip, int port) async {
